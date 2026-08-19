@@ -1,0 +1,17 @@
+# OpenCorp Sandbox
+
+# Use a lightweight Node.js image as the base
+FROM node:20-slim
+
+# Install essential tools
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create workspace directory
+WORKDIR /workspace
+
+# Default command
+CMD ["/bin/bash"]

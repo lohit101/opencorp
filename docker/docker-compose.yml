@@ -1,0 +1,33 @@
+# OpenCorp Docker Compose (development)
+
+services:
+  # Sandbox container for agent workspace execution
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.sandbox
+    image: opencorp-sandbox:latest
+    container_name: opencorp-sandbox
+    working_dir: /workspace
+    volumes:
+      - workspaces:/workspace
+    stdin_open: true
+    tty: true
+    # Security: restrict capabilities
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    # Security: read-only root filesystem (except workspace)
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  workspaces:
