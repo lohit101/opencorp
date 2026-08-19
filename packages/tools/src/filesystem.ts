@@ -1,12 +1,12 @@
 import type { ToolDefinition } from '@opencorp/shared';
 import type { Tool, ToolExecutionContext, ToolExecutionResult } from './types.js';
 import type { ToolCall } from '@opencorp/shared';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
+import type { DockerSandbox } from './sandbox.js';
 
 /**
- * Filesystem tool - allows agents to read, write, and list files in the workspace.
- * All paths are validated to prevent escaping the workspace directory.
+ * Filesystem tool group - allows agents to read, write, and list files in the
+ * workspace. All operations go through the Docker sandbox so the host filesystem
+ * is never exposed directly. Paths are validated to prevent escaping the workspace.
  */
 export class ReadFileTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -22,19 +22,20 @@ export class ReadFileTool implements Tool {
     ],
   };
 
+  private readonly sandbox: DockerSandbox;
+
+  constructor(sandbox: DockerSandbox) {
+    this.sandbox = sandbox;
+  }
+
   async execute(
     call: ToolCall,
-    context: ToolExecutionContext,
+    _context: ToolExecutionContext,
   ): Promise<ToolExecutionResult> {
     const filePath = String(call.arguments.path ?? '');
-    const resolvedPath = this.resolvePath(filePath, context.workspacePath);
-
-    if (!resolvedPath) {
-      return { success: false, error: 'Invalid or forbidden path' };
-    }
 
     try {
-      const content = await fs.readFile(resolvedPath, 'utf-8');
+      const content = await this.sandbox.readFile(filePath);
       return { success: true, data: { content, path: filePath } };
     } catch (error) {
       return {
@@ -42,15 +43,6 @@ export class ReadFileTool implements Tool {
         error: error instanceof Error ? error.message : 'Failed to read file',
       };
     }
-  }
-
-  private resolvePath(filePath: string, workspacePath: string): string | null {
-    const resolved = path.resolve(workspacePath, filePath);
-    // Prevent directory traversal outside workspace
-    if (!resolved.startsWith(workspacePath)) {
-      return null;
-    }
-    return resolved;
   }
 }
 
@@ -77,21 +69,21 @@ export class WriteFileTool implements Tool {
     ],
   };
 
+  private readonly sandbox: DockerSandbox;
+
+  constructor(sandbox: DockerSandbox) {
+    this.sandbox = sandbox;
+  }
+
   async execute(
     call: ToolCall,
-    context: ToolExecutionContext,
+    _context: ToolExecutionContext,
   ): Promise<ToolExecutionResult> {
     const filePath = String(call.arguments.path ?? '');
     const content = String(call.arguments.content ?? '');
-    const resolvedPath = this.resolvePath(filePath, context.workspacePath);
-
-    if (!resolvedPath) {
-      return { success: false, error: 'Invalid or forbidden path' };
-    }
 
     try {
-      await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-      await fs.writeFile(resolvedPath, content, 'utf-8');
+      await this.sandbox.writeFile(filePath, content);
       return { success: true, data: { path: filePath, size: content.length } };
     } catch (error) {
       return {
@@ -99,14 +91,6 @@ export class WriteFileTool implements Tool {
         error: error instanceof Error ? error.message : 'Failed to write file',
       };
     }
-  }
-
-  private resolvePath(filePath: string, workspacePath: string): string | null {
-    const resolved = path.resolve(workspacePath, filePath);
-    if (!resolved.startsWith(workspacePath)) {
-      return null;
-    }
-    return resolved;
   }
 }
 
@@ -127,26 +111,20 @@ export class ListFilesTool implements Tool {
     ],
   };
 
+  private readonly sandbox: DockerSandbox;
+
+  constructor(sandbox: DockerSandbox) {
+    this.sandbox = sandbox;
+  }
+
   async execute(
     call: ToolCall,
-    context: ToolExecutionContext,
+    _context: ToolExecutionContext,
   ): Promise<ToolExecutionResult> {
     const filePath = call.arguments.path ? String(call.arguments.path) : '';
-    const resolvedPath = filePath
-      ? this.resolvePath(filePath, context.workspacePath)
-      : context.workspacePath;
-
-    if (!resolvedPath) {
-      return { success: false, error: 'Invalid or forbidden path' };
-    }
 
     try {
-      const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
-      const files = entries.map((entry) => ({
-        name: entry.name,
-        type: entry.isDirectory() ? 'directory' : 'file',
-        path: filePath ? `${filePath}/${entry.name}` : entry.name,
-      }));
+      const files = await this.sandbox.listFiles(filePath);
       return { success: true, data: { files, path: filePath || '/' } };
     } catch (error) {
       return {
@@ -154,13 +132,5 @@ export class ListFilesTool implements Tool {
         error: error instanceof Error ? error.message : 'Failed to list files',
       };
     }
-  }
-
-  private resolvePath(filePath: string, workspacePath: string): string | null {
-    const resolved = path.resolve(workspacePath, filePath);
-    if (!resolved.startsWith(workspacePath)) {
-      return null;
-    }
-    return resolved;
   }
 }

@@ -1,0 +1,387 @@
+import { NextResponse } from 'next/server';
+import {
+  CompanyRepository,
+  AgentRepository,
+  TaskRepository,
+  MessageRepository,
+  PrismaMemoryStore,
+  EventStore,
+} from '@opencorp/db';
+import { OpenRouterProvider } from '@opencorp/llm';
+import {
+  DockerSandbox,
+  TerminalTool,
+  ReadFileTool,
+  WriteFileTool,
+  ListFilesTool,
+  SendMessageTool,
+  CreateTaskTool,
+  type PendingTask,
+  type Tool,
+} from '@opencorp/tools';
+import { AgentRuntime } from '@opencorp/agent-runtime';
+import type { Task, SystemEvent } from '@opencorp/shared';
+import * as path from 'node:path';
+
+const companyRepo = new CompanyRepository();
+const agentRepo = new AgentRepository();
+const taskRepo = new TaskRepository();
+const messageRepo = new MessageRepository();
+const eventStore = new EventStore();
+const memoryStore = new PrismaMemoryStore();
+
+const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? 'opencorp-sandbox:latest';
+
+// POST /api/companies/[companyId]/objective - set & execute a company objective
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ companyId: string }> },
+) {
+  try {
+    const { companyId } = await params;
+    const company = await companyRepo.findById(companyId);
+    if (!company) {
+      return NextResponse.json(
+        { success: false, error: 'Company not found' },
+        { status: 404 },
+      );
+    }
+
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'OPENROUTER_API_KEY is not configured. Add it to your .env file.',
+        },
+        { status: 400 },
+      );
+    }
+
+    const body = await request.json();
+    const objective = body?.objective as string | undefined;
+    if (!objective || !objective.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'Objective is required' },
+        { status: 400 },
+      );
+    }
+
+    // Find CEO
+    const agents = await agentRepo.findByCompany(companyId);
+    const ceo = agents.find((a) => a.role === 'CEO');
+    if (!ceo) {
+      return NextResponse.json(
+        { success: false, error: 'No CEO agent found. Create a CEO agent first.' },
+        { status: 400 },
+      );
+    }
+
+    await companyRepo.updateObjective(companyId, objective.trim());
+
+    // Create the CEO task
+    const ceoTask = await taskRepo.create({
+      companyId,
+      title: 'Execute company objective',
+      description: objective.trim(),
+      assignedAgentId: ceo.id,
+      priority: 1,
+    });
+
+    await memoryStore.store({
+      companyId,
+      type: 'company',
+      key: 'objective',
+      content: objective.trim(),
+      tags: ['objective'],
+    });
+
+    // Fire-and-forget: run the objective in the background
+    void runObjective({
+      companyId,
+      taskId: ceoTask.id,
+      objective: objective.trim(),
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          taskId: ceoTask.id,
+          message: 'Objective accepted. CEO is now working on it.',
+        },
+      },
+      { status: 202 },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to start objective',
+      },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * Runs the full objective: the CEO plans (delegating tasks), then delegated
+ * tasks are executed by their assigned agents.
+ */
+async function runObjective(params: {
+  companyId: string;
+  taskId: string;
+  objective: string;
+}): Promise<void> {
+  const { companyId, taskId, objective } = params;
+
+  // Track backend task IDs created from delegated PendingTasks so we can
+  // find them after the CEO's run.
+  const delegatedTargetIds: string[] = [];
+
+  try {
+    const task = await taskRepo.findById(taskId);
+    const ceo = (await agentRepo.findByCompany(companyId)).find(
+      (a) => a.role === 'CEO',
+    );
+    if (!task || !ceo) throw new Error('Task or CEO agent not found');
+
+    const llmProvider = new OpenRouterProvider({ apiKey: process.env.OPENROUTER_API_KEY! });
+    const sandbox = createSandbox(companyId);
+
+    await taskRepo.updateStatus(taskId, 'running');
+    await agentRepo.updateState(ceo.id, 'running');
+    await recordEvents(companyId, [
+      { type: 'task.started', agentId: ceo.id, taskId, eventData: {} },
+      { type: 'agent.started', agentId: ceo.id, taskId, eventData: {} },
+    ]);
+
+    const ceoTools = buildTools({
+      companyId,
+      agentId: ceo.id,
+      sandbox,
+      onTaskCreated: async (pending) => {
+        const created = await taskRepo.create({
+          companyId,
+          title: pending.title,
+          description: pending.description,
+          assignedAgentId: pending.assignedAgentId,
+          parentTaskId: pending.parentTaskId ?? taskId,
+          priority: pending.priority,
+        });
+        delegatedTargetIds.push(created.id);
+        await eventStore.create({
+          companyId,
+          type: 'task.created',
+          eventData: { title: created.title, assignedAgentId: created.assignedAgentId },
+        });
+        return created.id;
+      },
+    });
+
+    await eventStore.create({
+      companyId,
+      type: 'agent.thinking',
+      agentId: ceo.id,
+      taskId,
+      eventData: { phase: 'planning' },
+    });
+
+    const runner = new AgentRuntime({
+      agent: ceo,
+      llmProvider,
+      tools: ceoTools,
+      memory: memoryStore,
+      eventHandler: persistEvent(companyId),
+    });
+
+    const ceoResult = await runner.executeTask({
+      ...task,
+      title: 'Execute company objective',
+      description: objective,
+    });
+
+    // Execute delegated tasks
+    if (delegatedTargetIds.length > 0) {
+      await eventStore.create({
+        companyId,
+        type: 'system.info',
+        eventData: { message: `CEO delegated ${delegatedTargetIds.length} task(s). Executing them now.` },
+      });
+
+      for (const delegatedId of delegatedTargetIds) {
+        const delegatedTask = await taskRepo.findById(delegatedId);
+        if (!delegatedTask || !delegatedTask.assignedAgentId) continue;
+        await runAgentTask({
+          companyId,
+          agentId: delegatedTask.assignedAgentId,
+          task: delegatedTask,
+        });
+      }
+    }
+
+    const ceoResultText = ceoResult.result ?? 'Objective completed.';
+    await taskRepo.updateResult(taskId, ceoResultText);
+    await taskRepo.updateStatus(taskId, 'completed');
+    await agentRepo.updateState(ceo.id, 'idle');
+    await recordEvents(companyId, [
+      { type: 'task.completed', agentId: ceo.id, taskId, eventData: { result: ceoResultText } },
+      { type: 'company.completed', eventData: { objective } },
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    await taskRepo.updateError(taskId, message);
+    await taskRepo.updateStatus(taskId, 'failed');
+    await eventStore.create({
+      companyId,
+      type: 'task.failed',
+      taskId,
+      eventData: { error: message },
+    });
+  }
+}
+
+/**
+ * Run a single agent to completion on a given task.
+ */
+async function runAgentTask(params: {
+  companyId: string;
+  agentId: string;
+  task: import('@opencorp/shared').Task;
+}) {
+  const { companyId, agentId, task } = params;
+
+  const agent = await agentRepo.findById(agentId);
+  if (!agent) return;
+
+  const llmProvider = new OpenRouterProvider({ apiKey: process.env.OPENROUTER_API_KEY! });
+  const sandbox = createSandbox(companyId);
+
+  const tools = buildTools({
+    companyId,
+    agentId,
+    sandbox,
+    onTaskCreated: async (t) =>
+      (
+        await taskRepo.create({
+          companyId,
+          title: t.title,
+          description: t.description,
+          assignedAgentId: t.assignedAgentId,
+          parentTaskId: task.id,
+          priority: t.priority,
+        })
+      ).id,
+  });
+
+  await taskRepo.updateStatus(task.id, 'running');
+  await agentRepo.updateState(agentId, 'running');
+
+  const runtime = new AgentRuntime({
+    agent,
+    llmProvider,
+    tools,
+    memory: memoryStore,
+    eventHandler: persistEvent(companyId),
+  });
+
+  const result = await runtime.executeTask(task);
+
+  if (result.status === 'completed') {
+    await taskRepo.updateResult(task.id, result.result ?? '');
+    await taskRepo.updateStatus(task.id, 'completed');
+  } else {
+    await taskRepo.updateError(task.id, result.error ?? 'Task failed');
+    await taskRepo.updateStatus(task.id, 'failed');
+  }
+  await agentRepo.updateState(agentId, 'idle');
+
+  return result;
+}
+
+/**
+ * Build the standard set of tools available to all agents.
+ */
+function buildTools(params: {
+  sandbox: DockerSandbox;
+  companyId: string;
+  agentId: string;
+  onTaskCreated: (task: PendingTask) => Promise<string>;
+}): Tool[] {
+  const { sandbox, companyId, agentId, onTaskCreated } = params;
+
+  const sendMessageTool = new SendMessageTool();
+  sendMessageTool.setMessageHandler(async (message) => {
+    await messageRepo.create({
+      companyId: message.companyId,
+      senderAgentId: message.senderAgentId,
+      recipientAgentId: message.recipientAgentId ?? undefined,
+      taskId: message.taskId ?? undefined,
+      content: message.content,
+    });
+  });
+
+  const createTaskTool = new CreateTaskTool();
+  createTaskTool.setTaskHandler(onTaskCreated);
+
+  return [
+    new TerminalTool({ image: WORKSPACE_IMAGE, workspaceRoot: sandboxWorkspaceRoot(companyId) }),
+    new ReadFileTool(sandbox),
+    new WriteFileTool(sandbox),
+    new ListFilesTool(sandbox),
+    sendMessageTool,
+    createTaskTool,
+  ];
+}
+
+/**
+ * Create a Docker sandbox for a company's workspace.
+ */
+function createSandbox(companyId: string): DockerSandbox {
+  return new DockerSandbox({
+    image: WORKSPACE_IMAGE,
+    workspaceRoot: sandboxWorkspaceRoot(companyId),
+  });
+}
+
+function sandboxWorkspaceRoot(companyId: string): string {
+  return path.join(process.cwd(), '..', '..', '.workspaces', companyId);
+}
+
+/**
+ * Return an event handler that persists events to the DB.
+ */
+function persistEvent(companyId: string): (event: SystemEvent) => Promise<void> {
+  return async (event) => {
+    await eventStore.create({
+      companyId,
+      type: event.type,
+      agentId: event.agentId,
+      taskId: event.taskId,
+      eventData: event.data,
+    });
+  };
+}
+
+/**
+ * Record multiple events in sequence.
+ */
+async function recordEvents(
+  companyId: string,
+  events: {
+    type: import('@opencorp/shared').EventType;
+    agentId?: string;
+    taskId?: string;
+    eventData: Record<string, unknown>;
+  }[],
+): Promise<void> {
+  for (const event of events) {
+    await eventStore.create({
+      companyId,
+      type: event.type,
+      agentId: event.agentId,
+      taskId: event.taskId,
+      eventData: event.eventData,
+    });
+  }
+}

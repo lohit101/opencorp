@@ -28,3 +28,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Agent workspaces (Docker sandbox mounts)
+.workspaces/

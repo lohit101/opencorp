@@ -1,6 +1,7 @@
 import type { ToolDefinition } from '@opencorp/shared';
 import type { Tool, ToolExecutionContext, ToolExecutionResult } from './types.js';
 import type { ToolCall } from '@opencorp/shared';
+import { DockerSandbox } from './sandbox.js';
 
 /**
  * Terminal tool - allows agents to execute shell commands inside their workspace.
@@ -26,9 +27,15 @@ export class TerminalTool implements Tool {
     ],
   };
 
+  private readonly sandbox: DockerSandbox;
+
+  constructor(config: { image: string; workspaceRoot: string }) {
+    this.sandbox = new DockerSandbox(config);
+  }
+
   async execute(
     call: ToolCall,
-    context: ToolExecutionContext,
+    _context: ToolExecutionContext,
   ): Promise<ToolExecutionResult> {
     const command = String(call.arguments.command ?? '');
     const workdir = call.arguments.workdir
@@ -40,29 +47,20 @@ export class TerminalTool implements Tool {
     }
 
     try {
-      // TODO: Execute inside Docker sandbox
-      // For MVP, execute directly (will be sandboxed later)
-      const result = await this.runCommand(command, context.workspacePath, workdir);
-      return { success: true, data: result };
+      const result = await this.sandbox.exec(command, workdir);
+      return {
+        success: result.exitCode === 0,
+        data: {
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+        },
+      };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Command execution failed',
       };
     }
-  }
-
-  private async runCommand(
-    _command: string,
-    _workspacePath: string,
-    _workdir?: string,
-  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    // Placeholder: will be replaced with Docker execution
-    // For now, return a message indicating Docker sandbox is needed
-    return {
-      stdout: '',
-      stderr: 'Terminal execution requires Docker sandbox (not yet implemented)',
-      exitCode: 1,
-    };
   }
 }

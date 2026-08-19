@@ -12,6 +12,7 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
+    "@opencorp/db": "*",
     "@opencorp/shared": "*",
     "next": "^15.1.0",
     "react": "^19.0.0",

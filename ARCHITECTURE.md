@@ -204,6 +204,16 @@ Agent Runtime ──emit──► SystemEvent ──store──► Database
                          User sees live updates
 ```
 
+## Database Layer (`packages/db/`)
+
+The `@opencorp/db` package bridges the domain packages to SQLite/Prisma. It provides:
+
+- **Repositories**: `CompanyRepository`, `AgentRepository`, `TaskRepository`, `MessageRepository` — focused persistence logic for each entity.
+- **Stores**: `PrismaMemoryStore` (implements the `MemoryStore` interface from `@opencorp/memory`), `EventStore` (persists observable system events).
+- **Prisma client singleton**: `client.ts` exports a shared `PrismaClient` that avoids exhausting connections during dev hot-reloads.
+
+Domain packages (`llm`, `tools`, `agent-runtime`, `orchestrator`) depend on **interfaces** (e.g. `MemoryStore`, `Tool`, `LLMProvider`), while the web app + db package provide concrete implementations.
+
 ## Database Schema
 
 The database uses SQLite (via Prisma) for local-first operation.
@@ -222,10 +232,12 @@ See `prisma/schema.prisma` for the full schema.
 ## Security Model
 
 1. **API Keys**: Never stored in source code. Configured via environment variables.
-2. **Workspace Isolation**: Agent operations run inside Docker containers.
+2. **Workspace Isolation**: File operations are confined to a dedicated, per-company workspace directory (`.workspaces/{companyId}/`). The `terminal` tool executes commands inside a Docker container that mounts the same directory, so no arbitrary host commands are run.
 3. **Path Validation**: File operations are validated to prevent directory traversal.
 4. **Tool Permissions**: Agents can only use explicitly configured tools.
 5. **No Host Access**: Agents cannot execute arbitrary commands on the host machine.
+
+> **Note**: The Docker sandbox is a lightweight isolation layer, not a fully hardened sandbox. Treat agents as untrusted and review permissions carefully. See `docker/` and `packages/tools/src/sandbox.ts`.
 
 ## Provider Abstraction
 

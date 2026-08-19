@@ -103,8 +103,9 @@ Copy `.env.example` to `.env` and configure:
 
 OpenCorp is in **early development**. The initial foundation is being established.
 
-### Current Phase: Foundation
+### Current Phase: MVP Runtime
 
+**Phase 0 — Foundation** ✅
 - [x] Project structure and monorepo setup
 - [x] TypeScript configuration
 - [x] Shared domain types
@@ -117,9 +118,16 @@ OpenCorp is in **early development**. The initial foundation is being establishe
 - [x] Docker sandbox configuration
 - [x] Next.js web application
 - [x] Skill directory structure
-- [ ] Agent runtime implementation (in progress)
-- [ ] OpenRouter integration (in progress)
-- [ ] Docker sandbox execution (in progress)
+
+**Phase 1 — Working MVP** ✅
+- [x] Agent runtime implementation
+- [x] OpenRouter integration (real LLM calls)
+- [x] Docker sandbox execution
+- [x] Prisma-based memory + event stores
+- [x] API routes (companies, agents, tasks, events, objective)
+- [x] Company/agent creation UI
+- [x] Objective input + task board + live activity feed
+- [x] End-to-end verified (CEO builds a landing page)
 
 See [ROADMAP.md](ROADMAP.md) for the full development roadmap.
 
