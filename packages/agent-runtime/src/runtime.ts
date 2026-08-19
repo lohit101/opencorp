@@ -1,7 +1,15 @@
-import type { AgentConfig, Task, SystemEvent } from '@opencorp/shared';
+import type { AgentConfig, Task, SystemEvent, Skill } from '@opencorp/shared';
 import type { LLMProvider } from '@opencorp/llm';
 import type { Tool } from '@opencorp/tools';
 import type { MemoryStore } from '@opencorp/memory';
+
+/**
+ * Provider that supplies skill instructions for an agent's role.
+ * The runtime injects these into the agent's context before the LLM call.
+ */
+export interface SkillProvider {
+  loadSkills(agent: AgentConfig): Promise<Skill[]>;
+}
 
 /**
  * AgentRuntime is the core execution loop for an AI agent.
@@ -14,6 +22,7 @@ export class AgentRuntime {
   private readonly llmProvider: LLMProvider;
   private readonly tools: Map<string, Tool>;
   private readonly memory: MemoryStore;
+  private readonly skillProvider?: SkillProvider;
   private readonly eventHandler?: (event: SystemEvent) => Promise<void>;
 
   private currentTask: Task | null = null;
@@ -24,12 +33,14 @@ export class AgentRuntime {
     llmProvider: LLMProvider;
     tools: Tool[];
     memory: MemoryStore;
+    skillProvider?: SkillProvider;
     eventHandler?: (event: SystemEvent) => Promise<void>;
   }) {
     this.agent = params.agent;
     this.llmProvider = params.llmProvider;
     this.tools = new Map(params.tools.map((t) => [t.definition.name, t]));
     this.memory = params.memory;
+    this.skillProvider = params.skillProvider;
     this.eventHandler = params.eventHandler;
   }
 
@@ -59,7 +70,7 @@ export class AgentRuntime {
       });
 
       // Build initial context
-      const context = this.buildContext(task, relevantMemory);
+      const context = await this.buildContext(task, relevantMemory);
 
       // Main agent loop
       const result = await this.runLoop(context);
@@ -197,7 +208,10 @@ export class AgentRuntime {
     throw new Error(`Task exceeded maximum iterations (${maxIterations})`);
   }
 
-  private buildContext(task: Task, memory: import('@opencorp/shared').MemoryEntry[]): string {
+  private async buildContext(
+    task: Task,
+    memory: import('@opencorp/shared').MemoryEntry[],
+  ): Promise<string> {
     let context = `You have been assigned the following task:\n\n`;
     context += `Title: ${task.title}\n`;
     context += `Description: ${task.description}\n\n`;
@@ -208,6 +222,19 @@ export class AgentRuntime {
         context += `- [${entry.type}] ${entry.key}: ${entry.content}\n`;
       }
       context += '\n';
+    }
+
+    // Inject relevant skills into the context
+    if (this.skillProvider) {
+      const skills = await this.skillProvider.loadSkills(this.agent);
+      if (skills.length > 0) {
+        context += `## Your Skills\n`;
+        for (const skill of skills) {
+          context += `\n### Skill: ${skill.name} (${skill.id})\n`;
+          context += `${skill.instructions}\n`;
+        }
+        context += '\n';
+      }
     }
 
     context += `You have the following tools available:\n`;

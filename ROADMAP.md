@@ -65,30 +65,44 @@ User: "Build me a landing page for an AI email automation product."
 
 ---
 
-## Phase 2: Multi-Agent Orchestration 🚧 (Next)
+## Phase 2: Multi-Agent Orchestration ✅ (Complete)
 
 **Goal**: Support multiple agents working together on complex objectives.
 
-- [ ] Wire up CEO → Engineer delegation via `create_task`
-- [ ] Execute delegated tasks after the CEO's planning loop
-- [ ] Researcher agent with web research skills
-- [ ] Designer agent with design skills
-- [ ] QA agent with testing skills
-- [ ] Task dependency system
-- [ ] Parallel task execution
-- [ ] Agent-to-agent communication in real time
-- [ ] Git integration tool
-- [ ] Browser automation tool
-- [ ] Enhanced memory with relevance scoring
-- [ ] Skill loading from database
-- [ ] Reusable skill marketplace (local)
-- [ ] WebSocket-based real-time UI updates
-- [ ] Task cancellation from UI
-- [ ] Agent state persistence across sessions
+- [x] Wire up CEO → Engineer delegation via `create_task`
+- [x] Execute delegated tasks after the CEO's planning loop
+- [x] Researcher agent with research skills
+- [x] Designer agent with design skills
+- [x] QA agent with testing skills
+- [x] Agent-to-agent communication (send_message persisted)
+- [x] Git integration tool (sandboxed)
+- [x] Skill loading from `skills/` directory (`@opencorp/skills`)
+- [x] Task cancellation from UI (Stop Run button + cancel API)
+- [x] `list_agents` tool so the CEO can discover the team
+
+**Success Criteria** (verified):
+```
+User: "Build me a landing page for an AI email automation product."
+→ CEO receives objective
+→ CEO uses list_agents to discover the team
+→ CEO uses create_task to delegate to Engineer (Sam)
+→ Engineer builds index.html in the workspace (uses git tool)
+→ CEO delegates QA verification to QA agent (Tina)
+→ QA verifies and reports
+→ All tasks complete, all agents idle
+→ User sees everything in the UI
+```
+
+### Notes / Improvements for next phase
+- The CEO's planning loop can re-delegate duplicate tasks before delegated
+  tasks execute (they run after the CEO loop). Consider ending the CEO loop
+  after delegation, or running delegated tasks concurrently.
+- The dashboard does not yet list existing companies on load (it only shows
+  the company created in the current session).
 
 ---
 
-## Phase 3: Rich User Experience
+## Phase 3: Rich User Experience 🚧 (Next)
 
 **Goal**: Make the application feel alive and engaging.
 

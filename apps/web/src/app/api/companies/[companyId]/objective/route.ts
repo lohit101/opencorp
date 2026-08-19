@@ -16,11 +16,15 @@ import {
   ListFilesTool,
   SendMessageTool,
   CreateTaskTool,
+  ListAgentsTool,
+  GitTool,
   type PendingTask,
   type Tool,
 } from '@opencorp/tools';
-import { AgentRuntime } from '@opencorp/agent-runtime';
-import type { Task, SystemEvent } from '@opencorp/shared';
+import { AgentRuntime, type SkillProvider } from '@opencorp/agent-runtime';
+import { SkillLoader } from '@opencorp/skills';
+import type { AgentConfig, Task, SystemEvent } from '@opencorp/shared';
+import { activeRuns } from '@/lib/runs';
 import * as path from 'node:path';
 
 const companyRepo = new CompanyRepository();
@@ -31,6 +35,17 @@ const eventStore = new EventStore();
 const memoryStore = new PrismaMemoryStore();
 
 const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? 'opencorp-sandbox:latest';
+const SKILLS_ROOT = path.join(process.cwd(), '..', '..', 'skills');
+
+/**
+ * Build a SkillProvider that loads the skills referenced by each agent.
+ */
+function makeSkillProvider(): SkillProvider {
+  const loader = new SkillLoader(SKILLS_ROOT);
+  return {
+    loadSkills: (agent: AgentConfig) => loader.loadMany(agent.skillIds),
+  };
+}
 
 // POST /api/companies/[companyId]/objective - set & execute a company objective
 export async function POST(
@@ -139,11 +154,13 @@ async function runObjective(params: {
   // find them after the CEO's run.
   const delegatedTargetIds: string[] = [];
 
+  // Register the run for cancellation support.
+  activeRuns.set(taskId, []);
+
   try {
     const task = await taskRepo.findById(taskId);
-    const ceo = (await agentRepo.findByCompany(companyId)).find(
-      (a) => a.role === 'CEO',
-    );
+    const companyAgents = await agentRepo.findByCompany(companyId);
+    const ceo = companyAgents.find((a) => a.role === 'CEO');
     if (!task || !ceo) throw new Error('Task or CEO agent not found');
 
     const llmProvider = new OpenRouterProvider({ apiKey: process.env.OPENROUTER_API_KEY! });
@@ -159,6 +176,7 @@ async function runObjective(params: {
     const ceoTools = buildTools({
       companyId,
       agentId: ceo.id,
+      agents: companyAgents,
       sandbox,
       onTaskCreated: async (pending) => {
         const created = await taskRepo.create({
@@ -192,8 +210,10 @@ async function runObjective(params: {
       llmProvider,
       tools: ceoTools,
       memory: memoryStore,
+      skillProvider: makeSkillProvider(),
       eventHandler: persistEvent(companyId),
     });
+    activeRuns.get(taskId)?.push(runner);
 
     const ceoResult = await runner.executeTask({
       ...task,
@@ -214,6 +234,7 @@ async function runObjective(params: {
         if (!delegatedTask || !delegatedTask.assignedAgentId) continue;
         await runAgentTask({
           companyId,
+          rootTaskId: taskId,
           agentId: delegatedTask.assignedAgentId,
           task: delegatedTask,
         });
@@ -238,6 +259,8 @@ async function runObjective(params: {
       taskId,
       eventData: { error: message },
     });
+  } finally {
+    activeRuns.delete(taskId);
   }
 }
 
@@ -246,20 +269,23 @@ async function runObjective(params: {
  */
 async function runAgentTask(params: {
   companyId: string;
+  rootTaskId: string;
   agentId: string;
   task: import('@opencorp/shared').Task;
 }) {
-  const { companyId, agentId, task } = params;
+  const { companyId, rootTaskId, agentId, task } = params;
 
   const agent = await agentRepo.findById(agentId);
   if (!agent) return;
 
+  const companyAgents = await agentRepo.findByCompany(companyId);
   const llmProvider = new OpenRouterProvider({ apiKey: process.env.OPENROUTER_API_KEY! });
   const sandbox = createSandbox(companyId);
 
   const tools = buildTools({
     companyId,
     agentId,
+    agents: companyAgents,
     sandbox,
     onTaskCreated: async (t) =>
       (
@@ -282,8 +308,11 @@ async function runAgentTask(params: {
     llmProvider,
     tools,
     memory: memoryStore,
+    skillProvider: makeSkillProvider(),
     eventHandler: persistEvent(companyId),
   });
+  // Register the runtime so the run can be cancelled.
+  activeRuns.get(rootTaskId)?.push(runtime);
 
   const result = await runtime.executeTask(task);
 
@@ -301,14 +330,16 @@ async function runAgentTask(params: {
 
 /**
  * Build the standard set of tools available to all agents.
+ * Returns the full tool set; the AgentRuntime filters by each agent's toolNames.
  */
 function buildTools(params: {
   sandbox: DockerSandbox;
   companyId: string;
   agentId: string;
+  agents: AgentConfig[];
   onTaskCreated: (task: PendingTask) => Promise<string>;
 }): Tool[] {
-  const { sandbox, companyId, agentId, onTaskCreated } = params;
+  const { sandbox, companyId, agentId, agents, onTaskCreated } = params;
 
   const sendMessageTool = new SendMessageTool();
   sendMessageTool.setMessageHandler(async (message) => {
@@ -324,13 +355,26 @@ function buildTools(params: {
   const createTaskTool = new CreateTaskTool();
   createTaskTool.setTaskHandler(onTaskCreated);
 
+  const listAgentsTool = new ListAgentsTool();
+  listAgentsTool.setRosterProvider(async () => ({
+    agents: agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      description: a.description,
+      state: a.state,
+    })),
+  }));
+
   return [
     new TerminalTool({ image: WORKSPACE_IMAGE, workspaceRoot: sandboxWorkspaceRoot(companyId) }),
     new ReadFileTool(sandbox),
     new WriteFileTool(sandbox),
     new ListFilesTool(sandbox),
+    new GitTool(sandbox),
     sendMessageTool,
     createTaskTool,
+    listAgentsTool,
   ];
 }
 

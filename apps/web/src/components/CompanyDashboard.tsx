@@ -166,6 +166,23 @@ export default function CompanyDashboard() {
     }
   };
 
+  const cancelObjective = async () => {
+    if (!company) return;
+    setError(null);
+    // Find the running root task to cancel
+    const rootTask = tasks.find((t) => t.title === 'Execute company objective' && !t.parentTaskId);
+    if (!rootTask) return;
+    try {
+      await fetch(`/api/companies/${company.id}/objective/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: rootTask.id }),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel objective');
+    }
+  };
+
   // Start polling when a company is selected
   useEffect(() => {
     if (!company?.id) return;
@@ -222,6 +239,7 @@ export default function CompanyDashboard() {
                   isEditingObjective.current = focused;
                 }}
                 onSubmit={startObjective}
+                onCancel={cancelObjective}
                 running={objectiveRunning}
                 disabled={agents.length === 0}
               />
@@ -413,6 +431,8 @@ function AgentCreatePanel({
             <option value="CEO">CEO</option>
             <option value="ENGINEER">Engineer</option>
             <option value="RESEARCHER">Researcher</option>
+            <option value="QA">QA</option>
+            <option value="DESIGNER">Designer</option>
           </select>
         </div>
         <button
@@ -432,6 +452,7 @@ function ObjectivePanel({
   setObjective,
   onFocusChange,
   onSubmit,
+  onCancel,
   running,
   disabled,
 }: {
@@ -439,6 +460,7 @@ function ObjectivePanel({
   setObjective: (v: string) => void;
   onFocusChange: (focused: boolean) => void;
   onSubmit: (e: React.FormEvent) => void;
+  onCancel: () => void;
   running: boolean;
   disabled: boolean;
 }) {
@@ -467,9 +489,18 @@ function ObjectivePanel({
           {running ? '● Working...' : '▶ Run Company'}
         </button>
         {running && (
-          <p className="text-center text-xs text-brand-400">
-            Agents are working. Watch the activity feed below.
-          </p>
+          <>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full rounded-lg border border-red-700 px-6 py-2.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-950/50"
+            >
+              ■ Stop Run
+            </button>
+            <p className="text-center text-xs text-brand-400">
+              Agents are working. Watch the activity feed below.
+            </p>
+          </>
         )}
       </form>
     </Card>

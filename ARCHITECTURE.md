@@ -96,8 +96,11 @@ Initial tools:
 - `write_file` — Write/create files
 - `list_files` — List directory contents
 - `send_message` — Communicate with other agents
+- `create_task` — Delegate work to another agent (used by the CEO)
+- `list_agents` — Discover the team roster (used by the CEO)
+- `git` — Run git commands inside the sandboxed workspace
 
-### 5. Skill (`skills/`)
+### 5. Skill (`packages/skills/` + `skills/`)
 
 Skills are Markdown-based instruction packages that teach agents how to perform specific work. They are:
 
@@ -105,6 +108,10 @@ Skills are Markdown-based instruction packages that teach agents how to perform 
 - Version-controlled
 - Reusable across agents
 - Easy to create and modify
+
+The `@opencorp/skills` package provides a `SkillLoader` that reads `SKILL.md`
+files from the `skills/` directory. The `AgentRuntime` accepts a `SkillProvider`
+and injects each agent's referenced skills into its context before the LLM call.
 
 Skills are **not tools**. Tools are executable; skills are instructional.
 

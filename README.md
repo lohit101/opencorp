@@ -103,7 +103,7 @@ Copy `.env.example` to `.env` and configure:
 
 OpenCorp is in **early development**. The initial foundation is being established.
 
-### Current Phase: MVP Runtime
+### Current Phase: Multi-Agent Orchestration
 
 **Phase 0 — Foundation** ✅
 - [x] Project structure and monorepo setup
@@ -128,6 +128,16 @@ OpenCorp is in **early development**. The initial foundation is being establishe
 - [x] Company/agent creation UI
 - [x] Objective input + task board + live activity feed
 - [x] End-to-end verified (CEO builds a landing page)
+
+**Phase 2 — Multi-Agent Orchestration** ✅
+- [x] CEO delegation via `create_task` + `list_agents`
+- [x] Delegated tasks executed after CEO planning loop
+- [x] Researcher / Designer / QA agent roles
+- [x] Agent-to-agent messaging
+- [x] Git tool (sandboxed)
+- [x] Skill loading (`@opencorp/skills`)
+- [x] Task cancellation (Stop Run button + cancel API)
+- [x] End-to-end verified (CEO → Engineer → QA)
 
 See [ROADMAP.md](ROADMAP.md) for the full development roadmap.
 

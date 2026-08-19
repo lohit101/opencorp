@@ -12,8 +12,12 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
+    "@opencorp/agent-runtime": "*",
     "@opencorp/db": "*",
+    "@opencorp/llm": "*",
     "@opencorp/shared": "*",
+    "@opencorp/skills": "*",
+    "@opencorp/tools": "*",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

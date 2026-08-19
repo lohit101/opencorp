@@ -1,1 +1,1 @@
-export { AgentRuntime } from './runtime.js';
+export { AgentRuntime, type SkillProvider } from './runtime.js';
