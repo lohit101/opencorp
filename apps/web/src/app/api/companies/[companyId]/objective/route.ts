@@ -205,6 +205,8 @@ async function runObjective(params: {
       eventData: { phase: 'planning' },
     });
 
+    // The CEO is a planner: keep its loop bounded so it delegates and wraps up
+    // in a few steps rather than looping while workers do the heavy lifting.
     const runner = new AgentRuntime({
       agent: ceo,
       llmProvider,
@@ -212,6 +214,7 @@ async function runObjective(params: {
       memory: memoryStore,
       skillProvider: makeSkillProvider(),
       eventHandler: persistEvent(companyId),
+      maxIterations: 12,
     });
     activeRuns.get(taskId)?.push(runner);
 
@@ -221,7 +224,7 @@ async function runObjective(params: {
       description: objective,
     });
 
-    // Execute delegated tasks
+    // Execute delegated tasks sequentially after the CEO's planning loop.
     if (delegatedTargetIds.length > 0) {
       await eventStore.create({
         companyId,

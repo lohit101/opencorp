@@ -94,11 +94,18 @@ User: "Build me a landing page for an AI email automation product."
 ```
 
 ### Notes / Improvements for next phase
-- The CEO's planning loop can re-delegate duplicate tasks before delegated
-  tasks execute (they run after the CEO loop). Consider ending the CEO loop
-  after delegation, or running delegated tasks concurrently.
+- The CEO's planning loop is bounded (`maxIterations: 12` for the planner) so it
+  delegates and wraps up in a few steps instead of looping while workers run.
 - The dashboard does not yet list existing companies on load (it only shows
   the company created in the current session).
+
+### Stability fixes (mid-Phase 2)
+- Fixed a Docker sandbox bug where each company's terminal tool reused the first
+  available container, mounting a *different* company's workspace. Containers are
+  now keyed to their workspace, so the terminal and filesystem tools always
+  operate on the same directory.
+- Made the agent loop's `maxIterations` configurable so the CEO (planner) uses a
+  tight bound while workers (Engineer, etc.) get a generous default.
 
 ---
 

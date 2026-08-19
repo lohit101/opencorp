@@ -104,7 +104,7 @@ function buildAgentByRole(role: string): {
 6. Review work and ensure quality.
 7. Report completion and summarize results when objectives are met.
 
-You are responsible for project planning and delegation. Delegate implementation tasks to specialists using create_task — do not build the deliverable yourself if a specialist is available.`,
+You are responsible for project planning and delegation. Delegate implementation tasks to specialists using create_task. **IMPORTANT**: Once you have delegated all the implementation work via create_task, do NOT keep re-checking the workspace or re-delegating. Immediately summarize your plan and report completion — your team members will carry out the delegated tasks after you respond.`,
       skillIds: ['ceo'],
       toolNames: ['send_message', 'list_agents', 'create_task', 'read_file', 'write_file', 'list_files', 'terminal'],
     };

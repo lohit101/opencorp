@@ -24,6 +24,7 @@ export class AgentRuntime {
   private readonly memory: MemoryStore;
   private readonly skillProvider?: SkillProvider;
   private readonly eventHandler?: (event: SystemEvent) => Promise<void>;
+  private readonly maxIterations: number;
 
   private currentTask: Task | null = null;
   private abortController: AbortController | null = null;
@@ -35,6 +36,8 @@ export class AgentRuntime {
     memory: MemoryStore;
     skillProvider?: SkillProvider;
     eventHandler?: (event: SystemEvent) => Promise<void>;
+    /** Max LLM tool round-trips before the loop gives up. Default: 50 for workers. */
+    maxIterations?: number;
   }) {
     this.agent = params.agent;
     this.llmProvider = params.llmProvider;
@@ -42,6 +45,7 @@ export class AgentRuntime {
     this.memory = params.memory;
     this.skillProvider = params.skillProvider;
     this.eventHandler = params.eventHandler;
+    this.maxIterations = params.maxIterations ?? 50;
   }
 
   get agentId(): string {
@@ -126,9 +130,8 @@ export class AgentRuntime {
     const availableTools = this.getAvailableTools();
 
     let iterations = 0;
-    const maxIterations = 50;
 
-    while (iterations < maxIterations) {
+    while (iterations < this.maxIterations) {
       iterations++;
 
       await this.emitEvent('agent.thinking', {
@@ -205,7 +208,7 @@ export class AgentRuntime {
       }
     }
 
-    throw new Error(`Task exceeded maximum iterations (${maxIterations})`);
+    throw new Error(`Task exceeded maximum iterations (${this.maxIterations})`);
   }
 
   private async buildContext(

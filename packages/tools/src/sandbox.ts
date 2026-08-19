@@ -29,11 +29,15 @@ export interface SandboxConfig {
 export class DockerSandbox {
   private readonly image: string;
   private readonly workspaceRoot: string;
+  private readonly containerName: string;
   private containerId: string | null = null;
 
   constructor(config: SandboxConfig) {
     this.image = config.image;
     this.workspaceRoot = config.workspaceRoot;
+    // Deterministic container name derived from the workspace path so each
+    // company's workspace gets its own container (never reused across workspaces).
+    this.containerName = `opencorp-sandbox-${this.hash(this.workspaceRoot)}`;
   }
 
   /**
@@ -47,7 +51,7 @@ export class DockerSandbox {
 
     await fs.mkdir(this.workspaceRoot, { recursive: true });
 
-    // Check if a container already exists for this workspace
+    // Check if a container already exists for THIS workspace
     const existing = await this.findExistingContainer();
     if (existing) {
       this.containerId = existing;
@@ -55,9 +59,9 @@ export class DockerSandbox {
       return;
     }
 
-    // Create a new container
+    // Create a new container for this workspace
     const { stdout } = await execAsync(
-      `docker run -d --name opencorp-sandbox-${Date.now()} ` +
+      `docker run -d --name ${this.containerName} ` +
         `-v "${this.workspaceRoot}:/workspace" ` +
         `-w /workspace ` +
         `--cap-drop ALL ` +
@@ -154,7 +158,7 @@ export class DockerSandbox {
   private async findExistingContainer(): Promise<string | null> {
     try {
       const { stdout } = await execAsync(
-        `docker ps -aq --filter "name=opencorp-sandbox-" | head -1`,
+        `docker ps -aq --filter "name=${this.containerName}" | head -1`,
       );
       return stdout.trim() || null;
     } catch {
@@ -168,6 +172,19 @@ export class DockerSandbox {
     } catch {
       // Container may already be running
     }
+  }
+
+  /**
+   * Simple deterministic hash of a string (FNV-1a) used to derive a stable
+   * container name from the workspace path.
+   */
+  private hash(value: string): string {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16);
   }
 
   private resolveWorkspacePath(relativePath: string): string {
