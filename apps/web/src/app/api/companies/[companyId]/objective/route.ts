@@ -4,6 +4,7 @@ import {
   AgentRepository,
   TaskRepository,
   MessageRepository,
+  QuestionRepository,
   PrismaMemoryStore,
   EventStore,
 } from '@opencorp/db';
