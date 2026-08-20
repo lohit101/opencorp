@@ -67,20 +67,20 @@ interface MemoryEntry {
 // ---------------------------------------------------------------------------
 
 const ROLE_COLORS: Record<string, string> = {
-  CEO: 'bg-brand-600',
-  ENGINEER: 'bg-blue-600',
-  RESEARCHER: 'bg-violet-600',
-  QA: 'bg-emerald-600',
-  DESIGNER: 'bg-pink-600',
+  CEO: 'bg-chart-4',
+  ENGINEER: 'bg-chart-1',
+  RESEARCHER: 'bg-chart-5',
+  QA: 'bg-chart-2',
+  DESIGNER: 'bg-chart-3',
 };
 
 const STATE_STYLES: Record<string, { dot: string; label: string; pulse: boolean }> = {
-  idle: { dot: 'bg-zinc-500', label: 'text-zinc-400', pulse: false },
-  running: { dot: 'bg-brand-400', label: 'text-brand-400', pulse: true },
-  thinking: { dot: 'bg-amber-400', label: 'text-amber-400', pulse: true },
-  waiting: { dot: 'bg-sky-400', label: 'text-sky-400', pulse: false },
-  blocked: { dot: 'bg-orange-400', label: 'text-orange-400', pulse: false },
-  error: { dot: 'bg-red-400', label: 'text-red-400', pulse: false },
+  idle: { dot: 'bg-muted-foreground', label: 'text-muted-foreground', pulse: false },
+  running: { dot: 'bg-chart-1', label: 'text-chart-1', pulse: true },
+  thinking: { dot: 'bg-chart-4', label: 'text-chart-4', pulse: true },
+  waiting: { dot: 'bg-chart-5', label: 'text-chart-5', pulse: false },
+  blocked: { dot: 'bg-chart-3', label: 'text-chart-3', pulse: false },
+  error: { dot: 'bg-destructive', label: 'text-destructive', pulse: false },
 };
 
 export function AgentAvatar({
@@ -133,8 +133,8 @@ export function MessageViewer({
     agents.find((a) => a.id === id)?.name ?? 'system';
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Message History ({messages.length})
       </h3>
       {messages.length === 0 ? (
@@ -222,9 +222,9 @@ export function MemoryBrowser({
   const visible = filter === 'all' ? memories : memories.filter((m) => m.type === filter);
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Memory ({memories.length})
         </h3>
         <div className="flex flex-wrap gap-1">
@@ -357,8 +357,8 @@ export function RunHistory({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Run History ({runs.length})
       </h3>
       {runs.length === 0 ? (
@@ -443,8 +443,8 @@ export function TaskTimeline({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Task Timeline
       </h3>
       {tasks.length === 0 ? (
@@ -517,9 +517,9 @@ export function LogViewer({
         });
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Event Log ({visible.length})
         </h3>
         <div className="flex flex-wrap gap-1">
@@ -578,9 +578,9 @@ export function VirtualOffice({ agents }: { agents: Agent[] }) {
   const running = agents.filter((a) => a.state !== 'idle').length;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           🏢 Virtual Office
         </h3>
         <span className="text-xs text-zinc-500">
@@ -658,9 +658,9 @@ export function ActivityVisualizer({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           ⚡ Live Activity
         </h3>
         <span className="flex items-center gap-1.5 text-xs text-brand-400">
@@ -714,8 +714,8 @@ export function AgentProfiles({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Agent Profiles ({agents.length})
       </h3>
       {agents.length === 0 ? (
@@ -812,9 +812,9 @@ export function TerminalView({
     .slice(0, 40);
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-black/60 p-5">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           ⌨️ Terminal Output
         </h3>
         <span className="flex items-center gap-1.5 text-xs text-green-400">
@@ -927,12 +927,12 @@ export function DepartmentTree({
   );
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           🌳 Organization Tree
         </h3>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-muted-foreground">
           {agents.length} agents · {deptNames.length} departments
         </span>
       </div>
@@ -1325,23 +1325,23 @@ export function BrainWheel({
     }));
   }
 
-  const SIZE = 460;
+  const SIZE = 480;
   const CX = SIZE / 2;
   const CY = SIZE / 2;
-  const R = 170; // ring radius
-  const NODE_R = 44;
+  const R = 175; // ring radius
+  const NODE_R = 46;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-chart-1/10">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           🧠 Digital Brain
         </h3>
         <div className="flex items-center gap-2">
           {center.type !== 'company' && (
             <button
               onClick={() => setCenter({ type: 'company' })}
-              className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-brand-500 hover:text-brand-300"
+              className="rounded-lg border border-border bg-card/60 px-2.5 py-1 text-xs text-muted-foreground transition-all hover:border-chart-1 hover:text-foreground"
             >
               ↺ All Departments
             </button>
@@ -1349,7 +1349,7 @@ export function BrainWheel({
           {center.type === 'agent' && (
             <button
               onClick={() => setCenter({ type: 'dept', dept: agents.find((a) => a.id === center.agentId)?.department || 'general' })}
-              className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-brand-500 hover:text-brand-300"
+              className="rounded-lg border border-border bg-card/60 px-2.5 py-1 text-xs text-muted-foreground transition-all hover:border-chart-1 hover:text-foreground"
             >
               ↺ {agents.find((a) => a.id === center.agentId)?.department || 'general'}
             </button>
@@ -1358,6 +1358,23 @@ export function BrainWheel({
       </div>
 
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full">
+        <defs>
+          {/* Glow filter for nodes */}
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          {/* Radial gradient for center */}
+          <radialGradient id="centerGrad" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
+            <stop offset="40%" stopColor={center.type === 'company' ? '#f59e0b' : '#3b82f6'} />
+            <stop offset="100%" stopColor="#18181b" />
+          </radialGradient>
+        </defs>
+
         {/* Connection lines from center to ring nodes */}
         {ring.map((node, i) => {
           const angle = (i / ring.length) * Math.PI * 2 - Math.PI / 2;
@@ -1371,48 +1388,50 @@ export function BrainWheel({
               x2={x}
               y2={y}
               stroke={node.color}
-              strokeOpacity={0.4}
+              strokeOpacity={0.35}
               strokeWidth={1.5}
+              strokeDasharray="4 3"
             />
           );
         })}
 
-        {/* Ring nodes */}
+        {/* Ring nodes with glow + pulse */}
         {ring.map((node, i) => {
           const angle = (i / ring.length) * Math.PI * 2 - Math.PI / 2;
           const x = CX + Math.cos(angle) * R;
           const y = CY + Math.sin(angle) * R;
           return (
-            <g key={node.id} onClick={node.onClick} className="cursor-pointer">
-              <circle cx={x} cy={y} r={NODE_R} fill={node.color} fillOpacity={0.25} stroke={node.color} strokeWidth={2} />
-              <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="#fff" fontSize={13} fontWeight={700}>
+            <g key={node.id} onClick={node.onClick} className="cursor-pointer" filter="url(#glow)">
+              <circle cx={x} cy={y} r={NODE_R} fill={node.color} fillOpacity={0.18} stroke={node.color} strokeWidth={2.5} />
+              <circle cx={x} cy={y} r={NODE_R} fill="none" stroke={node.color} strokeOpacity={0.5} strokeWidth={1} className="animate-ping" />
+              <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="#fff" fontSize={15} fontWeight={800}>
                 {node.label.charAt(0).toUpperCase()}
               </text>
-              <text x={x} y={y + NODE_R + 12} textAnchor="middle" fill="#a1a1aa" fontSize={9}>
+              <text x={x} y={y + NODE_R + 14} textAnchor="middle" fill="#a1a1aa" fontSize={9}>
                 {node.label.length > 14 ? node.label.slice(0, 14) + '…' : node.label}
               </text>
             </g>
           );
         })}
 
-        {/* Center node */}
+        {/* Center node with gradient + glow */}
         <g onClick={() => center.type !== 'company' && setCenter({ type: 'company' })} className="cursor-pointer">
-          <circle cx={CX} cy={CY} r={58} fill="#18181b" stroke="#f59e0b" strokeWidth={2.5} />
-          <circle cx={CX} cy={CY} r={58} fillOpacity={0} className="animate-ping" />
-          <text x={CX} y={CY - 6} textAnchor="middle" fill="#fff" fontSize={15} fontWeight={800}>
+          <circle cx={CX} cy={CY} r={62} fill="url(#centerGrad)" stroke="#f59e0b" strokeWidth={3} filter="url(#glow)" />
+          <circle cx={CX} cy={CY} r={62} fill="none" stroke="#f59e0b" strokeOpacity={0.4} strokeWidth={1.5} className="animate-ping" />
+          <text x={CX} y={CY - 8} textAnchor="middle" fill="#fff" fontSize={17} fontWeight={900}>
             {centerLabel.charAt(0).toUpperCase()}
           </text>
-          <text x={CX} y={CY + 14} textAnchor="middle" fill="#a1a1aa" fontSize={9}>
+          <text x={CX} y={CY + 14} textAnchor="middle" fill="#e0e0e0" fontSize={10}>
             {centerLabel.length > 12 ? centerLabel.slice(0, 12) + '…' : centerLabel}
           </text>
-          <text x={CX} y={CY + 30} textAnchor="middle" fill="#71717a" fontSize={8}>
+          <text x={CX} y={CY + 32} textAnchor="middle" fill="#a1a1aa" fontSize={8}>
             {centerSub}
           </text>
         </g>
       </svg>
 
       {/* Legend / hint */}
-      <p className="mt-2 text-[10px] text-zinc-500">
+      <p className="mt-2 text-[10px] text-muted-foreground">
         Click a node to zoom into it. Center shows the current focus.
       </p>
     </div>

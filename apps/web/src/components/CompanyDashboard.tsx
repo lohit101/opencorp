@@ -294,7 +294,7 @@ export default function CompanyDashboard() {
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       />
 
-      <main className="mx-auto max-w-7xl px-6 py-8">
+      <main className="mx-auto max-w-7xl px-6 py-8 animate-fade-up">
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
         {!company ? (
@@ -408,20 +408,22 @@ function Header({
   onToggleTheme: () => void;
 }) {
   return (
-    <header className="border-b border-zinc-800 px-6 py-4">
-      <div className="mx-auto flex max-w-7xl items-center justify-between">
+    <header className="sticky top-0 z-40 border-b border-border bg-card/70 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold">
+          <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-chart-1 via-chart-5 to-chart-2 text-sm font-bold text-white shadow-lg shadow-chart-1/30">
             OC
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-chart-2 animate-ping" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-zinc-100">
-              OpenCorp <span className="text-zinc-600">/</span>{' '}
+            <h1 className="text-lg font-semibold text-foreground">
+              <span className="gradient-text">OpenCorp</span>{' '}
+              <span className="text-muted-foreground">/</span>{' '}
               {companyName ?? 'No Company'}
             </h1>
             {running && (
-              <span className="flex items-center gap-1.5 text-xs font-medium text-brand-400">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-brand-400" />
+              <span className="flex items-center gap-1.5 text-xs font-medium text-chart-1">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-chart-1" />
                 Running
               </span>
             )}
@@ -430,13 +432,13 @@ function Header({
         <div className="flex items-center gap-3">
           <button
             onClick={onToggleTheme}
-            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-brand-500 hover:text-brand-300"
+            className="rounded-lg border border-border bg-card/60 px-3 py-1.5 text-sm text-muted-foreground transition-all hover:border-chart-1 hover:text-foreground hover:shadow-lg shadow-chart-1/20"
             title="Toggle dark/light theme"
           >
             {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
           </button>
           {!companyName && (
-            <a href="/" className="text-sm text-zinc-500 hover:text-zinc-300">
+            <a href="/" className="text-sm text-muted-foreground hover:text-foreground">
               ← Home
             </a>
           )}
@@ -454,9 +456,9 @@ function ErrorBanner({
   onDismiss: () => void;
 }) {
   return (
-    <div className="mb-6 flex items-center justify-between rounded-lg border border-red-800 bg-red-950/50 p-4 text-sm text-red-300">
+    <div className="mb-6 flex items-center justify-between rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive backdrop-blur-sm">
       <span>{message}</span>
-      <button onClick={onDismiss} className="ml-3 text-red-400 underline">
+      <button onClick={onDismiss} className="ml-3 text-destructive underline">
         Dismiss
       </button>
     </div>
@@ -471,8 +473,8 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+    <div className="glass rounded-2xl p-5 shadow-xl shadow-card/20">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </h3>
       {children}

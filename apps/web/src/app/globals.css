@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
-/* Ping animation for agent status indicators (running/thinking) */
+/* =============================================================================
+ * OpenCorp Design System
+ * A modern, cohesive design language inspired by shadcn/Radix semantic tokens.
+ * Dark-first with a "digital brain" aesthetic: deep space backgrounds,
+ * glassmorphic surfaces, gradient accents, and refined motion.
+ * ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+ * Ping animation for agent status indicators (running/thinking)
+ * ------------------------------------------------------------------------- */
 @keyframes ping {
   0% {
     transform: scale(1);
@@ -18,27 +27,240 @@
 }
 
 /* ---------------------------------------------------------------------------
- * Theme variables
- * The app is dark-first. Toggling the `light` class on <html> switches the
- * main surfaces to a light palette via CSS variables.
+ * Ambient background glow (digital brain aura)
+ * ------------------------------------------------------------------------- */
+@keyframes aurora {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(40px, -30px) scale(1.15);
+  }
+  66% {
+    transform: translate(-30px, 25px) scale(0.9);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Fade-up entrance animation
+ * ------------------------------------------------------------------------- */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ---------------------------------------------------------------------------
+ * Theme tokens (semantic, shadcn-style)
+ * Dark-first. `.light` overrides the same tokens.
  * ------------------------------------------------------------------------- */
 :root,
 .dark {
-  --oc-bg: #09090b; /* zinc-950 */
-  --oc-surface: #18181b; /* zinc-900 */
-  --oc-surface-soft: #27272a; /* zinc-800 */
-  --oc-border: #3f3f46; /* zinc-700 */
-  --oc-text: #f4f4f5; /* zinc-100 */
-  --oc-text-muted: #71717a; /* zinc-500 */
-  --oc-text-dim: #52525b; /* zinc-600 */
+  /* Base surfaces */
+  --background: oklch(0.13 0.02 285); /* deep indigo-black */
+  --foreground: oklch(0.96 0.01 285);
+
+  --card: oklch(0.16 0.02 285);
+  --card-foreground: oklch(0.96 0.01 285);
+
+  --popover: oklch(0.18 0.02 285);
+  --popover-foreground: oklch(0.96 0.01 285);
+
+  /* Brand accent — electric indigo/violet (digital brain) */
+  --primary: oklch(0.62 0.22 285);
+  --primary-foreground: oklch(0.98 0.01 285);
+
+  --secondary: oklch(0.24 0.03 285);
+  --secondary-foreground: oklch(0.9 0.02 285);
+
+  --muted: oklch(0.2 0.02 285);
+  --muted-foreground: oklch(0.62 0.02 285);
+
+  --accent: oklch(0.28 0.04 285);
+  --accent-foreground: oklch(0.9 0.02 285);
+
+  --destructive: oklch(0.58 0.24 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+
+  --border: oklch(0.24 0.02 285);
+  --input: oklch(0.24 0.02 285);
+  --ring: oklch(0.62 0.22 285);
+
+  /* Chart / status palette */
+  --chart-1: oklch(0.62 0.22 285); /* indigo */
+  --chart-2: oklch(0.7 0.2 165); /* emerald */
+  --chart-3: oklch(0.68 0.2 25); /* coral */
+  --chart-4: oklch(0.72 0.18 60); /* amber */
+  --chart-5: oklch(0.65 0.2 330); /* pink */
+
+  --radius: 0.75rem;
 }
 
 .light {
-  --oc-bg: #fafafa; /* zinc-50 */
-  --oc-surface: #ffffff;
-  --oc-surface-soft: #f4f4f5; /* zinc-100 */
-  --oc-border: #e4e4e7; /* zinc-200 */
-  --oc-text: #18181b; /* zinc-900 */
-  --oc-text-muted: #52525b; /* zinc-600 */
-  --oc-text-dim: #71717a; /* zinc-500 */
+  --background: oklch(0.97 0.005 285);
+  --foreground: oklch(0.2 0.02 285);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 285);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 285);
+
+  --primary: oklch(0.55 0.22 285);
+  --primary-foreground: oklch(0.98 0.01 285);
+
+  --secondary: oklch(0.92 0.01 285);
+  --secondary-foreground: oklch(0.3 0.02 285);
+
+  --muted: oklch(0.94 0.005 285);
+  --muted-foreground: oklch(0.5 0.02 285);
+
+  --accent: oklch(0.9 0.02 285);
+  --accent-foreground: oklch(0.25 0.02 285);
+
+  --destructive: oklch(0.55 0.24 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+
+  --border: oklch(0.88 0.01 285);
+  --input: oklch(0.88 0.01 285);
+  --ring: oklch(0.55 0.22 285);
+
+  --chart-1: oklch(0.55 0.22 285);
+  --chart-2: oklch(0.65 0.2 165);
+  --chart-3: oklch(0.6 0.2 25);
+  --chart-4: oklch(0.65 0.18 60);
+  --chart-5: oklch(0.6 0.2 330);
+
+  --radius: 0.75rem;
+}
+
+/* Expose tokens to Tailwind v4 via @theme */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+/* ---------------------------------------------------------------------------
+ * Base body styling
+ * ------------------------------------------------------------------------- */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------------------------------------------------------------------------
+ * Glassmorphic surface helper
+ * ------------------------------------------------------------------------- */
+.glass {
+  background: color-mix(in oklch, var(--card) 72%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4);
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+ * Gradient text helper (brand)
+ * ------------------------------------------------------------------------- */
+.gradient-text {
+  background: linear-gradient(
+    135deg,
+    var(--chart-1),
+    var(--chart-5),
+    var(--chart-2)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+ * Ambient aurora background for the app shell
+ * ------------------------------------------------------------------------- */
+.aurora-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 20% 10%,
+      color-mix(in oklch, var(--chart-1) 22%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 80% 20%,
+      color-mix(in oklch, var(--chart-5) 18%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 70% 60% at 50% 90%,
+      color-mix(in oklch, var(--chart-2) 14%, transparent),
+      transparent 70%
+    );
+  animation: aurora 18s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * Custom scrollbar
+ * ------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--border) 70%, transparent);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
 }
