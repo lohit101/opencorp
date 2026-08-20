@@ -8,7 +8,6 @@ import {
   RunHistory,
   TaskTimeline,
   LogViewer,
-  BrainWheel,
 } from './RichUX';
 
 // ---------------------------------------------------------------------------
@@ -328,13 +327,6 @@ export default function CompanyDashboard() {
                 disabled={agents.length === 0}
               />
             </div>
-
-            <BrainWheel
-              agents={agents}
-              tasks={tasks}
-              events={events}
-              messages={messages}
-            />
 
             <AgentsSection agents={agents} />
 
