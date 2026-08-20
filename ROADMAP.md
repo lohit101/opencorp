@@ -109,21 +109,21 @@ User: "Build me a landing page for an AI email automation product."
 
 ---
 
-## Phase 3: Rich User Experience 🚧 (Next)
+## Phase 3: Rich User Experience 🚧 (In Progress)
 
 **Goal**: Make the application feel alive and engaging.
 
+- [x] Agent avatars and status animations
+- [x] Message history viewer
+- [x] Memory browser
+- [x] Run history and replay
+- [x] Task timeline
+- [x] Log viewer with filtering
+- [x] File explorer for workspace
 - [ ] Visual virtual office layout
-- [ ] Agent avatars and status animations
 - [ ] Real-time agent activity visualization
 - [ ] Live terminal output view
-- [ ] Run history and replay
 - [ ] Agent profiles and statistics
-- [ ] Task timeline and Gantt chart
-- [ ] Message history viewer
-- [ ] Memory browser
-- [ ] File explorer for workspace
-- [ ] Log viewer with filtering
 - [ ] Dark/light theme
 - [ ] Responsive design
 
