@@ -136,6 +136,7 @@ User: "Build me a landing page for an AI email automation product."
 - [x] Add `department` field to agents (schema, types, repository, API)
 - [x] Department selector in agent creation UI
 - [x] Organization tree visualization (departments as branches, agents as leaves)
+- [x] Interactive drill-down tree (click department → agents → individual agent monitoring)
 - [x] Run delegated tasks in parallel across agents (sequential per-agent)
 - [x] Graceful iteration-limit wrap-up (agent summarizes progress instead of silently failing)
 - [ ] Department-aware delegation (CEO assigns tasks to the right department)
