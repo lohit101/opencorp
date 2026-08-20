@@ -8,11 +8,6 @@ import {
   RunHistory,
   TaskTimeline,
   LogViewer,
-  VirtualOffice,
-  ActivityVisualizer,
-  AgentProfiles,
-  TerminalView,
-  DepartmentTree,
   BrainWheel,
 } from './RichUX';
 
@@ -343,21 +338,7 @@ export default function CompanyDashboard() {
 
             <AgentsSection agents={agents} />
 
-            <DepartmentTree
-              agents={agents}
-              tasks={tasks}
-              events={events}
-              messages={messages}
-            />
-
-            <VirtualOffice agents={agents} />
-
             <WorkspaceSection companyId={company.id} files={files} />
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              <ActivityVisualizer events={events} agents={agents} />
-              <TerminalView events={events} agents={agents} />
-            </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
               <TasksSection tasks={tasks} agents={agents} />
@@ -381,8 +362,6 @@ export default function CompanyDashboard() {
               />
               <TaskTimeline tasks={tasks} agents={agents} />
             </div>
-
-            <AgentProfiles agents={agents} tasks={tasks} messages={messages} />
 
             <LogViewer events={events} agents={agents} />
           </div>
