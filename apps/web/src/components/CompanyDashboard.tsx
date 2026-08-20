@@ -1197,7 +1197,7 @@ function formatEvent(
   const tag = event.agentId ? agentName(event.agentId) : 'company';
   switch (event.type) {
     case 'task.created':
-      return `[${tag}] created task "${event.data.title}"`;
+      return `[${tag}] created task "${event.data.title}"${event.data.assignedAgentId ? ` → ${agentName(event.data.assignedAgentId)}` : ''}`;
     case 'task.started':
       return `[${tag}] started working`;
     case 'task.completed':
@@ -1207,11 +1207,18 @@ function formatEvent(
     case 'agent.started':
       return `[${tag}] agent went live`;
     case 'agent.thinking':
-      return `[${tag}] thinking...`;
+      return `[${tag}] thinking... (iter ${event.data.iteration})`;
     case 'agent.tool_called':
       return `[${tag}] tool → ${event.data.toolName}`;
-    case 'agent.tool_completed':
-      return `[${tag}] tool done → ${event.data.toolName}`;
+    case 'agent.tool_completed': {
+      const summary = event.data.summary;
+      const ok = event.data.success;
+      return ok
+        ? `[${tag}] ✓ ${summary ?? `finished ${event.data.toolName}`}`
+        : `[${tag}] ✗ ${summary ?? `failed ${event.data.toolName}`}`;
+    }
+    case 'agent.loop_detected':
+      return `[${tag}] ⚠ detected a loop on "${event.data.toolName}" — redirecting`;
     case 'company.objective_set':
       return `[company] objective: ${event.data.objective}`;
     case 'company.completed':
@@ -1228,6 +1235,7 @@ function formatEvent(
 }
 
 function typeColor(t: string): string {
+  if (t.includes('loop')) return 'amber';
   if (t.includes('completed')) return 'green';
   if (t.includes('failed') || t.includes('error')) return 'red';
   if (t.includes('tool')) return 'brand';

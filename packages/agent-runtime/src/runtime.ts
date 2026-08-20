@@ -154,6 +154,9 @@ export class AgentRuntime {
     const availableTools = this.getAvailableTools();
 
     let iterations = 0;
+    // Track recent tool calls (normalized) to detect if the agent is looping.
+    const recentCalls: string[] = [];
+    let workDone = false; // Did the agent actually perform any productive work?
 
     while (iterations < this.maxIterations) {
       iterations++;
@@ -204,10 +207,20 @@ export class AgentRuntime {
             signal: this.abortController?.signal,
           });
 
+          // Track "productive" actions (file writes, terminal, git commits).
+          const isWork = ['write_file', 'terminal', 'git'].includes(
+            toolCall.toolName,
+          );
+          if (result.success && isWork) {
+            workDone = true;
+          }
+
           await this.emitEvent('agent.tool_completed', {
             agentId: this.agent.id,
             toolName: toolCall.toolName,
             success: result.success,
+            summary:
+              extractSummary(toolCall.toolName, toolCall.arguments, result),
           });
 
           messages.push({
@@ -218,11 +231,51 @@ export class AgentRuntime {
             toolCallId: toolCall.id,
             toolName: toolCall.toolName,
           });
+
+          // Loop detection: log a normalized signature of this tool call.
+          recentCalls.push(
+            `${toolCall.toolName}:${JSON.stringify(toolCall.arguments ?? {})}`,
+          );
+        }
+
+        // If the agent repeated the same exact tool call several times in a row,
+        // it's likely stuck. Inject a redirect so it tries a different approach
+        // rather than burning iterations on the same action.
+        const last = recentCalls.slice(-4);
+        if (
+          last.length === 4 &&
+          new Set(last).size === 1
+        ) {
+          await this.emitEvent('agent.loop_detected', {
+            agentId: this.agent.id,
+            toolName: last[0],
+          });
+          messages.push({
+            role: 'user',
+            content:
+              `You appear to be repeating the same action (${last[0]}) without progress. ` +
+              `STOP repeating it. Re-evaluate the situation and try a DIFFERENT approach, or ` +
+              `if you are blocked and need input, use the "ask_user" tool. Do not call ` +
+              `${last[0]} again with the same arguments.`,
+          });
         }
       }
 
       // If the LLM finished without tool calls, we're done
       if (response.finishReason === 'stop' && response.toolCalls.length === 0) {
+        // If the agent claims to be done but has done NO real work, nudge it to
+        // actually do the task rather than just talking about it.
+        if (!workDone && iterations < 3) {
+          messages.push({
+            role: 'user',
+            content:
+              `You have not actually performed any work yet (no files written, no commands run). ` +
+              `Do not report completion. Actually perform the task using your tools — write files, ` +
+              `run commands, and produce a working result. Only report done after you have ` +
+              `created/verified a deliverable. If you need input, use "ask_user".`,
+          });
+          continue;
+        }
         return response.content;
       }
 
@@ -360,7 +413,12 @@ export class AgentRuntime {
       context += `- ${name}: ${tool.definition.description}\n`;
     }
 
-    context += `\nWork in the workspace directory. Complete the task and report your results.`;
+    context += `\nWork in the workspace directory. Complete the task and produce a WORKING result.\n\n`;
+    context += `**VERIFY YOUR WORK**: Do not report the task as done until you have actually created `;
+    context += `or modified files and (where possible) verified they work (e.g. run a build, serve, `;
+    context += `or test command). If a build/test fails, fix it and re-run. Only report completion `;
+    context += `once you have created a deliverable that works. If you are blocked and need input, `;
+    context += `tell the user by calling the "ask_user" tool.`;
 
     return context;
   }
@@ -386,5 +444,64 @@ export class AgentRuntime {
       data,
       timestamp: new Date().toISOString(),
     });
+  }
+}
+
+/**
+ * Build a human-readable summary of what a tool did, for the activity log.
+ * Extracts the most useful argument / result fields so the user can see what
+ * the agent is actually doing (e.g. which file was written, which command ran).
+ */
+function extractSummary(
+  toolName: string,
+  args: Record<string, unknown>,
+  result: {
+    success: boolean;
+    error?: string;
+    data?: unknown;
+  },
+): string {
+  if (!result.success && result.error) {
+    return `❌ ${result.error.slice(0, 160)}`;
+  }
+
+  switch (toolName) {
+    case 'write_file': {
+      const p = typeof args.path === 'string' ? args.path : args.file;
+      const len = typeof args.content === 'string' ? args.content.length : 0;
+      return `wrote ${p ?? 'file'} (${len} chars)`;
+    }
+    case 'read_file': {
+      const p = typeof args.path === 'string' ? args.path : args.file;
+      return `read ${p ?? 'file'}`;
+    }
+    case 'list_files':
+      return `listed ${typeof args.path === 'string' ? args.path : 'directory'}`;
+    case 'terminal': {
+      const cmd =
+        typeof args.command === 'string'
+          ? args.command
+          : JSON.stringify(args);
+      return `$ ${cmd.slice(0, 120)}`;
+    }
+    case 'git': {
+      const action =
+        typeof args.action === 'string'
+          ? args.action
+          : args.subcommand ?? 'git';
+      return `git ${action}`;
+    }
+    case 'create_task': {
+      const title = args.title;
+      return `delegated "${title}" to ${args.assignedAgentId ?? 'agent'}`;
+    }
+    case 'send_message':
+      return `messaged ${args.recipientAgentId ?? 'agent'}`;
+    case 'ask_user':
+      return `ask_user: ${String(args.question ?? '').slice(0, 100)}`;
+    case 'remember':
+      return `remembered "${args.key}"`;
+    default:
+      return `ok`;
   }
 }

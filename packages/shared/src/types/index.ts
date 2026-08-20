@@ -207,6 +207,7 @@ export type EventType =
   | 'agent.asked_user'
   | 'agent.error'
   | 'agent.iteration_limit'
+  | 'agent.loop_detected'
   | 'task.created'
   | 'task.assigned'
   | 'task.started'
