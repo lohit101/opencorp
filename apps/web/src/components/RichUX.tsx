@@ -561,5 +561,282 @@ export function LogViewer({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Virtual office layout
+// ---------------------------------------------------------------------------
+
+const OFFICE_ROLE_ICONS: Record<string, string> = {
+  CEO: '👔',
+  ENGINEER: '💻',
+  RESEARCHER: '🔬',
+  QA: '🧪',
+  DESIGNER: '🎨',
+};
+
+export function VirtualOffice({ agents }: { agents: Agent[] }) {
+  const running = agents.filter((a) => a.state !== 'idle').length;
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+          🏢 Virtual Office
+        </h3>
+        <span className="text-xs text-zinc-500">
+          {running} active / {agents.length} total
+        </span>
+      </div>
+      {agents.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Add agents to populate the office.
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {agents.map((agent) => (
+            <div
+              key={agent.id}
+              className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3"
+            >
+              <div className="flex items-center gap-2">
+                <AgentAvatar
+                  name={agent.name}
+                  role={agent.role}
+                  state={agent.state}
+                  size="lg"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-zinc-100">
+                    {agent.name}
+                  </p>
+                  <p className="text-[10px] text-zinc-500">
+                    {OFFICE_ROLE_ICONS[agent.role.toUpperCase()] ?? '💼'}{' '}
+                    {agent.role}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    agent.state === 'idle' ? 'bg-zinc-500' : 'bg-brand-400 animate-pulse'
+                  }`}
+                />
+                <span className="text-[10px] text-zinc-400">{agent.state}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Real-time activity visualization (live pulse)
+// ---------------------------------------------------------------------------
+
+export function ActivityVisualizer({
+  events,
+  agents,
+}: {
+  events: SystemEvent[];
+  agents: Agent[];
+}) {
+  const agentName = (id?: string) =>
+    agents.find((a) => a.id === id)?.name ?? 'system';
+
+  // Show the most recent events as a live "pulse" stream.
+  const recent = [...events].slice(-12).reverse();
+
+  const colorFor = (type: string): string => {
+    if (type.includes('completed')) return 'text-green-400';
+    if (type.includes('failed') || type.includes('error')) return 'text-red-400';
+    if (type.includes('tool')) return 'text-brand-400';
+    if (type.includes('message')) return 'text-purple-400';
+    if (type.includes('thinking')) return 'text-amber-400';
+    return 'text-zinc-400';
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+          ⚡ Live Activity
+        </h3>
+        <span className="flex items-center gap-1.5 text-xs text-brand-400">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-brand-400" />
+          Live
+        </span>
+      </div>
+      {recent.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Agent activity will pulse here in real time.
+        </p>
+      ) : (
+        <div className="space-y-1.5 font-mono text-xs">
+          {recent.map((e) => (
+            <div key={e.id} className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+              <span className="shrink-0 text-zinc-600">
+                {new Date(e.timestamp).toLocaleTimeString()}
+              </span>
+              <span className={`truncate ${colorFor(e.type)}`}>
+                [{agentName(e.agentId)}] {e.type}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Agent profiles & statistics
+// ---------------------------------------------------------------------------
+
+export function AgentProfiles({
+  agents,
+  tasks,
+  messages,
+}: {
+  agents: Agent[];
+  tasks: Task[];
+  messages: AgentMessage[];
+}) {
+  const statsFor = (agentId: string) => {
+    const assigned = tasks.filter((t) => t.assignedAgentId === agentId);
+    const completed = assigned.filter((t) => t.status === 'completed');
+    const failed = assigned.filter((t) => t.status === 'failed');
+    const sent = messages.filter((m) => m.senderAgentId === agentId).length;
+    const received = messages.filter((m) => m.recipientAgentId === agentId).length;
+    return { assigned: assigned.length, completed: completed.length, failed: failed.length, sent, received };
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+        Agent Profiles ({agents.length})
+      </h3>
+      {agents.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Add agents to see their profiles and stats.
+        </p>
+      ) : (
+        <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+          {agents.map((agent) => {
+            const s = statsFor(agent.id);
+            return (
+              <div
+                key={agent.id}
+                className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <AgentAvatar name={agent.name} role={agent.role} state={agent.state} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-zinc-100">
+                      {agent.name}
+                    </p>
+                    <p className="text-[10px] text-zinc-500">{agent.role}</p>
+                  </div>
+                  <span className="ml-auto text-[10px] text-zinc-500">
+                    {agent.state}
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+                  <Stat label="Tasks" value={s.assigned} />
+                  <Stat label="Done" value={s.completed} color="text-green-400" />
+                  <Stat label="Failed" value={s.failed} color="text-red-400" />
+                  <Stat label="Sent" value={s.sent} color="text-purple-400" />
+                  <Stat label="Recv" value={s.received} color="text-sky-400" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  color = 'text-zinc-300',
+}: {
+  label: string;
+  value: number;
+  color?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center">
+      <span className={`text-sm font-semibold ${color}`}>{value}</span>
+      <span className="text-[9px] text-zinc-600">{label}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Live terminal output view
+// ---------------------------------------------------------------------------
+
+export function TerminalView({
+  events,
+  agents,
+}: {
+  events: SystemEvent[];
+  agents: Agent[];
+}) {
+  const agentName = (id?: string) =>
+    agents.find((a) => a.id === id)?.name ?? 'system';
+
+  const lines = events
+    .slice()
+    .reverse()
+    .map((e) => {
+      const tag = e.agentId ? agentName(e.agentId) : 'system';
+      let detail = '';
+      if (e.type.includes('tool') && e.data.toolName) {
+        detail = ` → ${e.data.toolName}`;
+      } else if (e.type.includes('task') && e.data.title) {
+        detail = ` → ${e.data.title}`;
+      } else if (e.type.includes('message')) {
+        detail = ' → message';
+      }
+      return {
+        id: e.id,
+        text: `[${new Date(e.timestamp).toLocaleTimeString()}] [${tag}] ${e.type}${detail}`,
+        color: e.type.includes('failed') || e.type.includes('error') ? 'text-red-400' : 'text-zinc-300',
+      };
+    })
+    .slice(0, 40);
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-black/60 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+          ⌨️ Terminal Output
+        </h3>
+        <span className="flex items-center gap-1.5 text-xs text-green-400">
+          <span className="h-2 w-2 rounded-full bg-green-400" />
+          Connected
+        </span>
+      </div>
+      {lines.length === 0 ? (
+        <p className="font-mono text-xs text-zinc-500">
+          $ Waiting for agent activity...
+        </p>
+      ) : (
+        <div className="max-h-80 space-y-0.5 overflow-y-auto pr-1 font-mono text-[11px]">
+          {lines.map((line) => (
+            <div key={line.id} className={`${line.color} whitespace-pre-wrap`}>
+              {line.text}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Re-export for the dashboard
 export const types = ['all', 'company', 'project', 'task', 'agent', 'decision'];

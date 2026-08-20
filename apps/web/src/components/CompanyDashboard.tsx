@@ -8,6 +8,10 @@ import {
   RunHistory,
   TaskTimeline,
   LogViewer,
+  VirtualOffice,
+  ActivityVisualizer,
+  AgentProfiles,
+  TerminalView,
 } from './RichUX';
 
 // ---------------------------------------------------------------------------
@@ -95,6 +99,14 @@ export default function CompanyDashboard() {
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const isEditingObjective = useRef(false);
   const companyRef = useRef<Company | null>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  // Apply the theme class to <html> so CSS variables switch the palette.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('dark', 'light');
+    root.classList.add(theme);
+  }, [theme]);
 
   const loadData = useCallback(async (companyId: string) => {
     try {
@@ -267,7 +279,12 @@ export default function CompanyDashboard() {
 
   return (
     <div className="min-h-screen">
-      <Header companyName={company?.name} running={objectiveRunning} />
+      <Header
+        companyName={company?.name}
+        running={objectiveRunning}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+      />
 
       <main className="mx-auto max-w-7xl px-6 py-8">
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
@@ -309,7 +326,14 @@ export default function CompanyDashboard() {
 
             <AgentsSection agents={agents} />
 
+            <VirtualOffice agents={agents} />
+
             <WorkspaceSection companyId={company.id} files={files} />
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ActivityVisualizer events={events} agents={agents} />
+              <TerminalView events={events} agents={agents} />
+            </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
               <TasksSection tasks={tasks} agents={agents} />
@@ -334,6 +358,8 @@ export default function CompanyDashboard() {
               <TaskTimeline tasks={tasks} agents={agents} />
             </div>
 
+            <AgentProfiles agents={agents} tasks={tasks} messages={messages} />
+
             <LogViewer events={events} agents={agents} />
           </div>
         )}
@@ -346,7 +372,17 @@ export default function CompanyDashboard() {
 // UI Components
 // ---------------------------------------------------------------------------
 
-function Header({ companyName, running }: { companyName?: string; running: boolean }) {
+function Header({
+  companyName,
+  running,
+  theme,
+  onToggleTheme,
+}: {
+  companyName?: string;
+  running: boolean;
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
+}) {
   return (
     <header className="border-b border-zinc-800 px-6 py-4">
       <div className="mx-auto flex max-w-7xl items-center justify-between">
@@ -367,11 +403,20 @@ function Header({ companyName, running }: { companyName?: string; running: boole
             )}
           </div>
         </div>
-        {!companyName && (
-          <a href="/" className="text-sm text-zinc-500 hover:text-zinc-300">
-            ← Home
-          </a>
-        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onToggleTheme}
+            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-brand-500 hover:text-brand-300"
+            title="Toggle dark/light theme"
+          >
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          </button>
+          {!companyName && (
+            <a href="/" className="text-sm text-zinc-500 hover:text-zinc-300">
+              ← Home
+            </a>
+          )}
+        </div>
       </div>
     </header>
   );
