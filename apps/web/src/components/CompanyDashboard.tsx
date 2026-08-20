@@ -53,6 +53,12 @@ interface AgentMessage {
   timestamp: string;
 }
 
+interface WorkspaceFile {
+  path: string;
+  name: string;
+  type: 'file' | 'directory';
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -63,6 +69,8 @@ export default function CompanyDashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<SystemEvent[]>([]);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [allCompanies, setAllCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [objective, setObjective] = useState('');
@@ -78,17 +86,20 @@ export default function CompanyDashboard() {
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const isEditingObjective = useRef(false);
+  const companyRef = useRef<Company | null>(null);
 
   const loadData = useCallback(async (companyId: string) => {
     try {
       const res = await fetch(`/api/companies/${companyId}`);
       const json = await res.json();
       if (json.success) {
+        companyRef.current = json.data.company;
         setCompany(json.data.company);
         setAgents(json.data.agents);
         setTasks(json.data.tasks);
         setEvents(json.data.events);
         setMessages(json.data.messages);
+        setFiles(json.data.files ?? []);
         // Only refresh the objective from the server if the user isn't drafting
         // a new one (avoids clobbering in-progress input during polling).
         if (!isEditingObjective.current) {
@@ -99,6 +110,24 @@ export default function CompanyDashboard() {
       setError(err instanceof Error ? err.message : 'Failed to load company');
     }
   }, []);
+
+  // Load the list of existing companies on mount.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/companies');
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setAllCompanies(json.data);
+          if (json.data.length > 0 && !companyRef.current) {
+            loadData(json.data[0].id);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [loadData]);
 
   const createCompany = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,7 +141,9 @@ export default function CompanyDashboard() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
+      companyRef.current = json.data;
       setCompany(json.data);
+      setAllCompanies((prev) => [...prev, json.data]);
       setCompanyName('');
       setCompanyDesc('');
     } catch (err) {
@@ -220,6 +251,8 @@ export default function CompanyDashboard() {
             setCompanyDesc={setCompanyDesc}
             onSubmit={createCompany}
             loading={loading}
+            existingCompanies={allCompanies}
+            onSelectCompany={(id) => loadData(id)}
           />
         ) : (
           <div className="space-y-8">
@@ -246,6 +279,8 @@ export default function CompanyDashboard() {
             </div>
 
             <AgentsSection agents={agents} />
+
+            <WorkspaceSection companyId={company.id} files={files} />
 
             <div className="grid gap-6 lg:grid-cols-2">
               <TasksSection tasks={tasks} agents={agents} />
@@ -334,6 +369,8 @@ function CreateCompanyPanel({
   setCompanyDesc,
   onSubmit,
   loading,
+  existingCompanies,
+  onSelectCompany,
 }: {
   companyName: string;
   setCompanyName: (v: string) => void;
@@ -341,10 +378,31 @@ function CreateCompanyPanel({
   setCompanyDesc: (v: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   loading: boolean;
+  existingCompanies: Company[];
+  onSelectCompany: (id: string) => void;
 }) {
   return (
     <div className="mx-auto max-w-lg">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-8">
+        {existingCompanies.length > 0 && (
+          <div className="mb-6 rounded-lg border border-zinc-700 bg-zinc-900 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              Or open an existing company
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {existingCompanies.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => onSelectCompany(c.id)}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-brand-500 hover:text-brand-300"
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <h2 className="mb-1 text-xl font-semibold text-zinc-100">
           Create Your AI Company
         </h2>
@@ -558,6 +616,63 @@ function AgentCard({ agent }: { agent: Agent }) {
         </span>
       </div>
       <p className="text-sm leading-relaxed text-zinc-400">{agent.description}</p>
+    </div>
+  );
+}
+
+function WorkspaceSection({
+  companyId,
+  files,
+}: {
+  companyId: string;
+  files: WorkspaceFile[];
+}) {
+  const htmlFiles = files.filter(
+    (f) => f.type === 'file' && f.name.endsWith('.html'),
+  );
+
+  return (
+    <div>
+      <h2 className="mb-3 text-lg font-semibold text-zinc-100">
+        Workspace Deliverables
+      </h2>
+      {files.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          The agents haven&apos;t created any files yet. Run an objective and their
+          work will appear here.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {htmlFiles.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {htmlFiles.map((file) => (
+                <a
+                  key={file.path}
+                  href={`/api/companies/${companyId}/workspace?path=${encodeURIComponent(file.path)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+                >
+                  👁 View {file.name}
+                </a>
+              ))}
+            </div>
+          )}
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Files ({files.length})
+            </p>
+            <div className="grid gap-1 font-mono text-xs sm:grid-cols-2">
+              {files.map((file) => (
+                <div key={file.path} className="flex items-center gap-2 text-zinc-400">
+                  <span>{file.type === 'directory' ? '📁' : '📄'}</span>
+                  <span>{file.path}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
