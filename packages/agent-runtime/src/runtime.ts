@@ -36,7 +36,7 @@ export class AgentRuntime {
     memory: MemoryStore;
     skillProvider?: SkillProvider;
     eventHandler?: (event: SystemEvent) => Promise<void>;
-    /** Max LLM tool round-trips before the loop gives up. Default: 50 for workers. */
+    /** Max LLM tool round-trips before the loop gives up. Default: 80 for workers. */
     maxIterations?: number;
   }) {
     this.agent = params.agent;
@@ -45,7 +45,7 @@ export class AgentRuntime {
     this.memory = params.memory;
     this.skillProvider = params.skillProvider;
     this.eventHandler = params.eventHandler;
-    this.maxIterations = params.maxIterations ?? 50;
+    this.maxIterations = params.maxIterations ?? 80;
   }
 
   get agentId(): string {
@@ -240,9 +240,11 @@ export class AgentRuntime {
   }
 
   /**
-   * When the iteration cap is reached, prompt the LLM to summarize progress
-   * and remaining work instead of throwing. This keeps the task from being
-   * marked failed while still being transparent about what was completed.
+   * When the iteration cap is reached, do a "final push" to produce a minimum
+   * working result instead of just stopping. The agent may still call tools
+   * once more to create/verify the most critical deliverable, then it produces
+   * an honest final summary. This keeps the task from being marked complete
+   * without at least attempting a usable outcome.
    */
   private async wrapUp(
     messages: import('@opencorp/llm').LLMMessage[],
@@ -253,17 +255,20 @@ export class AgentRuntime {
       maxIterations: this.maxIterations,
     });
 
-    const wrapUpPrompt: import('@opencorp/llm').LLMMessage = {
+    const finalPushPrompt: import('@opencorp/llm').LLMMessage = {
       role: 'user',
       content:
         `You have reached the maximum number of tool iterations (${this.maxIterations}). ` +
-        `Do NOT call any more tools. Instead, provide a final summary of:\n` +
-        `1. What you have completed so far (be specific about files created/modified and work done).\n` +
+        `You must now produce a MINIMUM WORKING RESULT. You may call tools ONE more time ` +
+        `to create or verify the single most critical deliverable, but keep it minimal and focused. ` +
+        `Then provide a final summary of:\n` +
+        `1. The minimum working result you produced (be specific about files created/modified and work done).\n` +
         `2. What remains incomplete or outstanding.\n` +
         `3. Any next steps that would be needed to finish.\n\n` +
-        `Be honest and concise. This summary will be recorded as the task result.`,
+        `Prioritize producing something that works over perfection. Do not stop until you have ` +
+        `created or verified at least a minimal deliverable.`,
     };
-    messages.push(wrapUpPrompt);
+    messages.push(finalPushPrompt);
 
     const response = await this.llmProvider.chat(messages, {
       model: this.agent.modelConfig.model,
@@ -271,6 +276,49 @@ export class AgentRuntime {
       tools: availableTools,
       signal: this.abortController?.signal,
     });
+
+    // If the LLM wants to call tools in this final push, execute them so it can
+    // actually produce the minimal working result.
+    if (response.toolCalls.length > 0) {
+      for (const toolCall of response.toolCalls) {
+        const tool = this.tools.get(toolCall.toolName);
+        if (!tool) {
+          messages.push({
+            role: 'tool',
+            content: `Error: Tool "${toolCall.toolName}" not found`,
+            toolCallId: toolCall.id,
+            toolName: toolCall.toolName,
+          });
+          continue;
+        }
+        const result = await tool.execute(toolCall, {
+          workspacePath: `/workspace/${this.agent.companyId}`,
+          agentId: this.agent.id,
+          companyId: this.agent.companyId,
+          signal: this.abortController?.signal,
+        });
+        messages.push({
+          role: 'tool',
+          content: result.success
+            ? JSON.stringify(result.data)
+            : `Error: ${result.error}`,
+          toolCallId: toolCall.id,
+          toolName: toolCall.toolName,
+        });
+      }
+
+      // Get the final summary after the final tool calls.
+      const finalResponse = await this.llmProvider.chat(messages, {
+        model: this.agent.modelConfig.model,
+        systemPrompt: this.agent.systemPrompt,
+        tools: availableTools,
+        signal: this.abortController?.signal,
+      });
+      return (
+        finalResponse.content ??
+        `Reached iteration limit (${this.maxIterations}). No final summary was produced.`
+      );
+    }
 
     return (
       response.content ??

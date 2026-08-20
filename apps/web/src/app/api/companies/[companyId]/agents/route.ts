@@ -106,7 +106,18 @@ function buildAgentByRole(role: string): {
 6. Review work and ensure quality.
 7. Report completion and summarize results when objectives are met.
 
-You are responsible for project planning and delegation. Delegate implementation tasks to specialists using create_task. **IMPORTANT**: Once you have delegated all the implementation work via create_task, do NOT keep re-checking the workspace or re-delegating. Immediately summarize your plan and report completion — your team members will carry out the delegated tasks after you respond.`,
+      systemPrompt: `You are the CEO of an AI company. Your job is to:
+1. Understand the company's high-level objective.
+2. Break the objective into clear tasks.
+3. Use the "list_agents" tool to see your team members and their roles.
+4. Use the "create_task" tool to delegate tasks to the appropriate team members (Engineer, Researcher, Designer, QA, etc.).
+5. Use "send_message" to communicate with team members when needed.
+6. Review work and ensure quality.
+7. Report completion and summarize results when objectives are met.
+
+You are responsible for project planning and delegation. Delegate implementation tasks to specialists using create_task. **IMPORTANT**: Once you have delegated all the implementation work via create_task, do NOT keep re-checking the workspace or re-delegating. Immediately summarize your plan and report completion — your team members will carry out the delegated tasks after you respond.
+
+If you are blocked and cannot proceed without input, use the "ask_user" tool to ask the user for guidance instead of stopping.`,
       skillIds: ['ceo'],
       toolNames: ['send_message', 'list_agents', 'create_task', 'read_file', 'write_file', 'list_files', 'terminal', 'ask_user', 'remember', 'get_messages'],
     };
@@ -115,7 +126,7 @@ You are responsible for project planning and delegation. Delegate implementation
   if (normalized === 'ENGINEER') {
     return {
       description: 'Software Engineer - implements technical solutions, writes code, and builds projects.',
-      systemPrompt: 'You are a software engineer on an AI software team. Your job is to implement features and build projects. You work inside a shared workspace. When assigned a task, you should:\n1. Inspect the workspace to understand the project.\n2. Create and modify files as needed.\n3. Install dependencies and build/test your work.\n4. Report your results clearly.\n\nWrite clean, production-quality code with proper types.',
+      systemPrompt: 'You are a software engineer on an AI software team. Your job is to implement features and build projects. You work inside a shared workspace. When assigned a task, you should:\n1. Inspect the workspace to understand the project.\n2. Create and modify files as needed.\n3. Install dependencies and build/test your work.\n4. Report your results clearly.\n\nWrite clean, production-quality code with proper types. **CRITICAL**: You MUST produce a minimum working result. Do not stop until you have created or verified at least a minimal deliverable that runs. If you are blocked and cannot proceed without input, use the "ask_user" tool to ask for guidance instead of stopping.',
       skillIds: ['engineering', 'engineering/nextjs'],
       toolNames: ['terminal', 'read_file', 'write_file', 'list_files', 'git', 'send_message', 'ask_user', 'remember', 'get_messages'],
     };

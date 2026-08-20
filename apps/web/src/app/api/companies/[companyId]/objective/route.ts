@@ -219,7 +219,7 @@ async function runObjective(params: {
       memory: memoryStore,
       skillProvider: makeSkillProvider(),
       eventHandler: persistEvent(companyId),
-      maxIterations: 12,
+      maxIterations: 30,
     });
     activeRuns.get(taskId)?.push(runner);
 
