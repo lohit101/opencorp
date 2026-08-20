@@ -1,6 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  AgentAvatar,
+  MessageViewer,
+  MemoryBrowser,
+  RunHistory,
+  TaskTimeline,
+  LogViewer,
+} from './RichUX';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -214,6 +222,27 @@ export default function CompanyDashboard() {
     }
   };
 
+  // Replay a past run by re-submitting its objective.
+  const startObjectiveFromReplay = async (companyId: string, objectiveText: string) => {
+    setLoading(true);
+    setError(null);
+    setObjectiveRunning(true);
+    try {
+      const res = await fetch(`/api/companies/${companyId}/objective`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ objective: objectiveText }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to replay objective');
+      setObjectiveRunning(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Start polling when a company is selected
   useEffect(() => {
     if (!company?.id) return;
@@ -286,6 +315,26 @@ export default function CompanyDashboard() {
               <TasksSection tasks={tasks} agents={agents} />
               <ActivityFeed events={events} messages={messages} agents={agents} />
             </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <MessageViewer messages={messages} agents={agents} />
+              <MemoryBrowser companyId={company.id} agents={agents} />
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <RunHistory
+                tasks={tasks}
+                events={events}
+                agents={agents}
+                onReplay={(objective) => {
+                  setObjective(objective);
+                  void startObjectiveFromReplay(company.id, objective);
+                }}
+              />
+              <TaskTimeline tasks={tasks} agents={agents} />
+            </div>
+
+            <LogViewer events={events} agents={agents} />
           </div>
         )}
       </main>
@@ -598,9 +647,7 @@ function AgentCard({ agent }: { agent: Agent }) {
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-900 text-sm font-bold text-brand-300">
-            {agent.name.charAt(0).toUpperCase()}
-          </span>
+          <AgentAvatar name={agent.name} role={agent.role} state={agent.state} />
           <div>
             <p className="font-medium text-zinc-100">{agent.name}</p>
             <p className="text-xs text-zinc-500">{agent.role}</p>
@@ -697,7 +744,7 @@ function TasksSection({ tasks, agents }: { tasks: Task[]; agents: Agent[] }) {
           No tasks yet. Run a company objective to create tasks.
         </p>
       ) : (
-        <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
+        <div className="max-h-100 space-y-2 overflow-y-auto pr-1">
           {tasks.map((task) => (
             <div
               key={task.id}
@@ -780,7 +827,7 @@ function ActivityFeed({
           Activity will appear here as agents work.
         </p>
       ) : (
-        <div className="max-h-[400px] space-y-1.5 overflow-y-auto pr-1 font-mono text-xs">
+        <div className="max-h-100 space-y-1.5 overflow-y-auto pr-1 font-mono text-xs">
           {feed.map((item) => (
             <div key={item.id} className="flex gap-2 py-0.5">
               <span className="shrink-0 text-zinc-600">
