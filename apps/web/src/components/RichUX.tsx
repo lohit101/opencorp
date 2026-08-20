@@ -1232,3 +1232,189 @@ function AgentDetail({
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Radial "digital brain" wheel visualization
+// ---------------------------------------------------------------------------
+
+const BRAIN_DEPT_COLORS: Record<string, string> = {
+  engineering: '#3b82f6', // blue
+  marketing: '#ec4899', // pink
+  design: '#a855f7', // purple
+  research: '#8b5cf6', // violet
+  qa: '#10b981', // emerald
+  operations: '#f59e0b', // amber
+  general: '#71717a', // zinc
+};
+
+const BRAIN_ROLE_COLORS: Record<string, string> = {
+  CEO: '#f59e0b',
+  ENGINEER: '#3b82f6',
+  RESEARCHER: '#8b5cf6',
+  QA: '#10b981',
+  DESIGNER: '#ec4899',
+};
+
+export function BrainWheel({
+  agents,
+  tasks,
+  events,
+  messages,
+}: {
+  agents: Agent[];
+  tasks: Task[];
+  events: SystemEvent[];
+  messages: AgentMessage[];
+}) {
+  const [center, setCenter] = useState<{ type: 'company' } | { type: 'dept'; dept: string } | { type: 'agent'; agentId: string }>({ type: 'company' });
+
+  // Group agents by department.
+  const departments = new Map<string, Agent[]>();
+  for (const agent of agents) {
+    const dept = agent.department || 'general';
+    if (!departments.has(dept)) departments.set(dept, []);
+    departments.get(dept)!.push(agent);
+  }
+  const deptNames = Array.from(departments.keys()).sort();
+
+  const agentName = (id?: string) =>
+    agents.find((a) => a.id === id)?.name ?? 'system';
+
+  // Determine the current ring of nodes around the center.
+  let ring: { id: string; label: string; sub: string; color: string; onClick: () => void }[] = [];
+  let centerLabel = 'Company';
+  let centerSub = `${agents.length} agents`;
+
+  if (center.type === 'company') {
+    centerLabel = 'OpenCorp';
+    centerSub = `${agents.length} agents · ${deptNames.length} depts`;
+    ring = deptNames.map((dept) => {
+      const members = departments.get(dept)!;
+      const active = members.filter((a) => a.state !== 'idle').length;
+      return {
+        id: `dept-${dept}`,
+        label: dept,
+        sub: `${members.length} agent${members.length !== 1 ? 's' : ''}${active ? ` · ${active} active` : ''}`,
+        color: BRAIN_DEPT_COLORS[dept] ?? '#71717a',
+        onClick: () => setCenter({ type: 'dept', dept }),
+      };
+    });
+  } else if (center.type === 'dept') {
+    const members = departments.get(center.dept) ?? [];
+    centerLabel = center.dept;
+    centerSub = `${members.length} agents`;
+    ring = members.map((agent) => ({
+      id: `agent-${agent.id}`,
+      label: agent.name,
+      sub: agent.role,
+      color: BRAIN_ROLE_COLORS[agent.role.toUpperCase()] ?? '#71717a',
+      onClick: () => setCenter({ type: 'agent', agentId: agent.id }),
+    }));
+  } else {
+    const agent = agents.find((a) => a.id === center.agentId)!;
+    centerLabel = agent.name;
+    centerSub = agent.role;
+    // Agent ring: show their tasks as nodes.
+    const agentTasks = tasks.filter((t) => t.assignedAgentId === agent.id);
+    ring = agentTasks.map((task) => ({
+      id: `task-${task.id}`,
+      label: task.title.length > 18 ? task.title.slice(0, 18) + '…' : task.title,
+      sub: task.status,
+      color: task.status === 'completed' ? '#10b981' : task.status === 'failed' ? '#ef4444' : '#3b82f6',
+      onClick: () => {},
+    }));
+  }
+
+  const SIZE = 460;
+  const CX = SIZE / 2;
+  const CY = SIZE / 2;
+  const R = 170; // ring radius
+  const NODE_R = 44;
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+          🧠 Digital Brain
+        </h3>
+        <div className="flex items-center gap-2">
+          {center.type !== 'company' && (
+            <button
+              onClick={() => setCenter({ type: 'company' })}
+              className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-brand-500 hover:text-brand-300"
+            >
+              ↺ All Departments
+            </button>
+          )}
+          {center.type === 'agent' && (
+            <button
+              onClick={() => setCenter({ type: 'dept', dept: agents.find((a) => a.id === center.agentId)?.department || 'general' })}
+              className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:border-brand-500 hover:text-brand-300"
+            >
+              ↺ {agents.find((a) => a.id === center.agentId)?.department || 'general'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full">
+        {/* Connection lines from center to ring nodes */}
+        {ring.map((node, i) => {
+          const angle = (i / ring.length) * Math.PI * 2 - Math.PI / 2;
+          const x = CX + Math.cos(angle) * R;
+          const y = CY + Math.sin(angle) * R;
+          return (
+            <line
+              key={`line-${node.id}`}
+              x1={CX}
+              y1={CY}
+              x2={x}
+              y2={y}
+              stroke={node.color}
+              strokeOpacity={0.4}
+              strokeWidth={1.5}
+            />
+          );
+        })}
+
+        {/* Ring nodes */}
+        {ring.map((node, i) => {
+          const angle = (i / ring.length) * Math.PI * 2 - Math.PI / 2;
+          const x = CX + Math.cos(angle) * R;
+          const y = CY + Math.sin(angle) * R;
+          return (
+            <g key={node.id} onClick={node.onClick} className="cursor-pointer">
+              <circle cx={x} cy={y} r={NODE_R} fill={node.color} fillOpacity={0.25} stroke={node.color} strokeWidth={2} />
+              <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fill="#fff" fontSize={13} fontWeight={700}>
+                {node.label.charAt(0).toUpperCase()}
+              </text>
+              <text x={x} y={y + NODE_R + 12} textAnchor="middle" fill="#a1a1aa" fontSize={9}>
+                {node.label.length > 14 ? node.label.slice(0, 14) + '…' : node.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Center node */}
+        <g onClick={() => center.type !== 'company' && setCenter({ type: 'company' })} className="cursor-pointer">
+          <circle cx={CX} cy={CY} r={58} fill="#18181b" stroke="#f59e0b" strokeWidth={2.5} />
+          <circle cx={CX} cy={CY} r={58} fillOpacity={0} className="animate-ping" />
+          <text x={CX} y={CY - 6} textAnchor="middle" fill="#fff" fontSize={15} fontWeight={800}>
+            {centerLabel.charAt(0).toUpperCase()}
+          </text>
+          <text x={CX} y={CY + 14} textAnchor="middle" fill="#a1a1aa" fontSize={9}>
+            {centerLabel.length > 12 ? centerLabel.slice(0, 12) + '…' : centerLabel}
+          </text>
+          <text x={CX} y={CY + 30} textAnchor="middle" fill="#71717a" fontSize={8}>
+            {centerSub}
+          </text>
+        </g>
+      </svg>
+
+      {/* Legend / hint */}
+      <p className="mt-2 text-[10px] text-zinc-500">
+        Click a node to zoom into it. Center shows the current focus.
+      </p>
+    </div>
+  );
+}
