@@ -16,6 +16,7 @@ export interface AgentConfig {
   companyId: string;
   name: string;
   role: string;
+  department: string;
   description: string;
   modelConfig: ModelConfig;
   systemPrompt: string;
@@ -204,6 +205,7 @@ export type EventType =
   | 'agent.tool_completed'
   | 'agent.message_sent'
   | 'agent.error'
+  | 'agent.iteration_limit'
   | 'task.created'
   | 'task.assigned'
   | 'task.started'

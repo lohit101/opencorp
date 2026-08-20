@@ -33,9 +33,10 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const body = await request.json();
-    const { name, role, description, model } = body as {
+    const { name, role, department, description, model } = body as {
       name?: string;
       role?: string;
+      department?: string;
       description?: string;
       model?: string;
     };
@@ -54,6 +55,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       companyId,
       name: name.trim(),
       role: role.trim().toUpperCase(),
+      department: department?.trim() || 'general',
       description: description?.trim() ?? builtin.description,
       modelConfig: {
         provider: 'openrouter',

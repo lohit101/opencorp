@@ -11,6 +11,7 @@ interface Agent {
   companyId: string;
   name: string;
   role: string;
+  department?: string;
   description: string;
   state: string;
 }
@@ -840,3 +841,109 @@ export function TerminalView({
 
 // Re-export for the dashboard
 export const types = ['all', 'company', 'project', 'task', 'agent', 'decision'];
+
+// ---------------------------------------------------------------------------
+// Department tree / branch visualization
+// ---------------------------------------------------------------------------
+
+const DEPARTMENT_ICONS: Record<string, string> = {
+  engineering: '⚙️',
+  marketing: '📣',
+  design: '🎨',
+  research: '🔬',
+  qa: '🧪',
+  operations: '📊',
+  general: '🏢',
+};
+
+const DEPARTMENT_COLORS: Record<string, string> = {
+  engineering: 'border-blue-500/40 text-blue-300',
+  marketing: 'border-pink-500/40 text-pink-300',
+  design: 'border-purple-500/40 text-purple-300',
+  research: 'border-violet-500/40 text-violet-300',
+  qa: 'border-emerald-500/40 text-emerald-300',
+  operations: 'border-amber-500/40 text-amber-300',
+  general: 'border-zinc-600/40 text-zinc-300',
+};
+
+export function DepartmentTree({ agents }: { agents: Agent[] }) {
+  // Group agents by department.
+  const departments = new Map<string, Agent[]>();
+  for (const agent of agents) {
+    const dept = agent.department || 'general';
+    if (!departments.has(dept)) departments.set(dept, []);
+    departments.get(dept)!.push(agent);
+  }
+
+  const deptNames = Array.from(departments.keys()).sort();
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+          🌳 Organization Tree
+        </h3>
+        <span className="text-xs text-zinc-500">
+          {agents.length} agents · {deptNames.length} departments
+        </span>
+      </div>
+      {agents.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Add agents to build your organization tree.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {deptNames.map((dept) => {
+            const members = departments.get(dept)!;
+            const active = members.filter((a) => a.state !== 'idle').length;
+            return (
+              <div
+                key={dept}
+                className={`rounded-lg border ${DEPARTMENT_COLORS[dept] ?? DEPARTMENT_COLORS.general} bg-zinc-900/60 p-3`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base">
+                    {DEPARTMENT_ICONS[dept] ?? '🏢'}
+                  </span>
+                  <span className="text-sm font-semibold capitalize text-zinc-100">
+                    {dept}
+                  </span>
+                  <span className="text-[10px] text-zinc-500">
+                    ({members.length} agent{members.length !== 1 ? 's' : ''})
+                  </span>
+                  {active > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] text-brand-400">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-400" />
+                      {active} active
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {members.map((agent) => (
+                    <div
+                      key={agent.id}
+                      className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1"
+                    >
+                      <AgentAvatar
+                        name={agent.name}
+                        role={agent.role}
+                        state={agent.state}
+                        size="sm"
+                      />
+                      <span className="text-xs text-zinc-300">{agent.name}</span>
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          agent.state === 'idle' ? 'bg-zinc-500' : 'bg-brand-400 animate-pulse'
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

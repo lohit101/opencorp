@@ -12,6 +12,7 @@ import {
   ActivityVisualizer,
   AgentProfiles,
   TerminalView,
+  DepartmentTree,
 } from './RichUX';
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,7 @@ interface Agent {
   companyId: string;
   name: string;
   role: string;
+  department?: string;
   description: string;
   state: string;
 }
@@ -95,6 +97,7 @@ export default function CompanyDashboard() {
   // Create agent form
   const [agentName, setAgentName] = useState('');
   const [agentRole, setAgentRole] = useState('CEO');
+  const [agentDepartment, setAgentDepartment] = useState('engineering');
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const isEditingObjective = useRef(false);
@@ -182,7 +185,11 @@ export default function CompanyDashboard() {
       const res = await fetch(`/api/companies/${company.id}/agents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: agentName, role: agentRole }),
+        body: JSON.stringify({
+          name: agentName,
+          role: agentRole,
+          department: agentDepartment,
+        }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
@@ -308,6 +315,8 @@ export default function CompanyDashboard() {
                 setAgentName={setAgentName}
                 agentRole={agentRole}
                 setAgentRole={setAgentRole}
+                agentDepartment={agentDepartment}
+                setAgentDepartment={setAgentDepartment}
                 onSubmit={createAgent}
                 loading={loading}
               />
@@ -325,6 +334,8 @@ export default function CompanyDashboard() {
             </div>
 
             <AgentsSection agents={agents} />
+
+            <DepartmentTree agents={agents} />
 
             <VirtualOffice agents={agents} />
 
@@ -546,6 +557,8 @@ function AgentCreatePanel({
   setAgentName,
   agentRole,
   setAgentRole,
+  agentDepartment,
+  setAgentDepartment,
   onSubmit,
   loading,
 }: {
@@ -553,6 +566,8 @@ function AgentCreatePanel({
   setAgentName: (v: string) => void;
   agentRole: string;
   setAgentRole: (v: string) => void;
+  agentDepartment: string;
+  setAgentDepartment: (v: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   loading: boolean;
 }) {
@@ -570,6 +585,24 @@ function AgentCreatePanel({
             className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-brand-500"
             required
           />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-zinc-300">
+            Department
+          </label>
+          <select
+            value={agentDepartment}
+            onChange={(e) => setAgentDepartment(e.target.value)}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm text-zinc-100 outline-none focus:border-brand-500"
+          >
+            <option value="engineering">Engineering</option>
+            <option value="marketing">Marketing</option>
+            <option value="design">Design</option>
+            <option value="research">Research</option>
+            <option value="qa">QA</option>
+            <option value="operations">Operations</option>
+            <option value="general">General</option>
+          </select>
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-zinc-300">
@@ -1052,6 +1085,8 @@ function formatEvent(
       return `[system] ${event.data.message}`;
     case 'agent.message_sent':
       return `[${tag}] sent a message`;
+    case 'agent.iteration_limit':
+      return `[${tag}] hit iteration limit (${event.data.maxIterations}) — wrapping up`;
     default:
       return `[${tag}] ${event.type}`;
   }

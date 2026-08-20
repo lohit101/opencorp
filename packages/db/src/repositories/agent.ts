@@ -9,6 +9,7 @@ export class AgentRepository {
     companyId: string;
     name: string;
     role: string;
+    department?: string;
     description: string;
     modelConfig: ModelConfig;
     systemPrompt: string;
@@ -22,6 +23,7 @@ export class AgentRepository {
         companyId: data.companyId,
         name: data.name,
         role: data.role,
+        department: data.department ?? 'general',
         description: data.description,
         modelProvider: data.modelConfig.provider,
         modelName: data.modelConfig.model,
@@ -67,6 +69,7 @@ export class AgentRepository {
       companyId: string;
       name: string;
       role: string;
+      department: string;
       description: string;
       modelProvider: string;
       modelName: string;
@@ -91,6 +94,7 @@ export class AgentRepository {
       companyId: agent.companyId,
       name: agent.name,
       role: agent.role,
+      department: agent.department,
       description: agent.description,
       modelConfig: {
         provider: agent.modelProvider as ModelConfig['provider'],

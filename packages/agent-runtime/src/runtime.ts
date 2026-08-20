@@ -208,7 +208,50 @@ export class AgentRuntime {
       }
     }
 
-    throw new Error(`Task exceeded maximum iterations (${this.maxIterations})`);
+    // We've hit the iteration cap. Instead of silently failing, gracefully
+    // wrap up: ask the LLM one final time to summarize what it has completed
+    // so far and report any remaining work, so the task is marked complete
+    // with an honest status rather than pretending the job is done.
+    return this.wrapUp(messages, availableTools);
+  }
+
+  /**
+   * When the iteration cap is reached, prompt the LLM to summarize progress
+   * and remaining work instead of throwing. This keeps the task from being
+   * marked failed while still being transparent about what was completed.
+   */
+  private async wrapUp(
+    messages: import('@opencorp/llm').LLMMessage[],
+    availableTools: import('@opencorp/shared').ToolDefinition[],
+  ): Promise<string> {
+    await this.emitEvent('agent.iteration_limit', {
+      agentId: this.agent.id,
+      maxIterations: this.maxIterations,
+    });
+
+    const wrapUpPrompt: import('@opencorp/llm').LLMMessage = {
+      role: 'user',
+      content:
+        `You have reached the maximum number of tool iterations (${this.maxIterations}). ` +
+        `Do NOT call any more tools. Instead, provide a final summary of:\n` +
+        `1. What you have completed so far (be specific about files created/modified and work done).\n` +
+        `2. What remains incomplete or outstanding.\n` +
+        `3. Any next steps that would be needed to finish.\n\n` +
+        `Be honest and concise. This summary will be recorded as the task result.`,
+    };
+    messages.push(wrapUpPrompt);
+
+    const response = await this.llmProvider.chat(messages, {
+      model: this.agent.modelConfig.model,
+      systemPrompt: this.agent.systemPrompt,
+      tools: availableTools,
+      signal: this.abortController?.signal,
+    });
+
+    return (
+      response.content ??
+      `Reached iteration limit (${this.maxIterations}). No final summary was produced.`
+    );
   }
 
   private async buildContext(

@@ -224,7 +224,9 @@ async function runObjective(params: {
       description: objective,
     });
 
-    // Execute delegated tasks sequentially after the CEO's planning loop.
+    // Execute delegated tasks after the CEO's planning loop. Tasks assigned to
+    // different agents run in parallel; tasks assigned to the same agent run
+    // sequentially to avoid conflicts on the same workspace.
     if (delegatedTargetIds.length > 0) {
       await eventStore.create({
         companyId,
@@ -232,16 +234,33 @@ async function runObjective(params: {
         eventData: { message: `CEO delegated ${delegatedTargetIds.length} task(s). Executing them now.` },
       });
 
+      // Load all delegated tasks and group by assigned agent.
+      const delegatedTasks: { task: import('@opencorp/shared').Task; agentId: string }[] = [];
       for (const delegatedId of delegatedTargetIds) {
         const delegatedTask = await taskRepo.findById(delegatedId);
         if (!delegatedTask || !delegatedTask.assignedAgentId) continue;
-        await runAgentTask({
-          companyId,
-          rootTaskId: taskId,
-          agentId: delegatedTask.assignedAgentId,
-          task: delegatedTask,
-        });
+        delegatedTasks.push({ task: delegatedTask, agentId: delegatedTask.assignedAgentId });
       }
+
+      // Group by agent so each agent's tasks run sequentially.
+      const byAgent = new Map<string, import('@opencorp/shared').Task[]>();
+      for (const { task: t, agentId } of delegatedTasks) {
+        if (!byAgent.has(agentId)) byAgent.set(agentId, []);
+        byAgent.get(agentId)!.push(t);
+      }
+
+      // Run each agent's task chain in parallel across agents.
+      const chains = Array.from(byAgent.entries()).map(async ([agentId, agentTasks]) => {
+        for (const agentTask of agentTasks) {
+          await runAgentTask({
+            companyId,
+            rootTaskId: taskId,
+            agentId,
+            task: agentTask,
+          });
+        }
+      });
+      await Promise.all(chains);
     }
 
     const ceoResultText = ceoResult.result ?? 'Objective completed.';

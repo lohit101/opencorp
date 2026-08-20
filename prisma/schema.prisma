@@ -43,6 +43,7 @@ model Agent {
   companyId     String
   name          String
   role          String
+  department    String   @default("general")
   description   String
   modelProvider String   @default("openrouter")
   modelName     String   @default("openai/gpt-4o-mini")
