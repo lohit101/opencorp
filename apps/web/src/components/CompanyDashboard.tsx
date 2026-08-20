@@ -674,7 +674,63 @@ function WorkspaceSection({
   companyId: string;
   files: WorkspaceFile[];
 }) {
-  const htmlFiles = files.filter(
+  const [dirStack, setDirStack] = useState<string[]>([]);
+  const [currentFiles, setCurrentFiles] = useState<WorkspaceFile[]>(files);
+  const [loadingDir, setLoadingDir] = useState(false);
+
+  const currentPath = dirStack.join('/');
+
+  // Load a directory's contents. dirPath is relative to the workspace root.
+  const loadDir = useCallback(async (dirPath: string) => {
+    setLoadingDir(true);
+    try {
+      const q = dirPath ? `?path=${encodeURIComponent(dirPath)}` : '';
+      const res = await fetch(
+        `/api/companies/${companyId}/workspace${q}`,
+      );
+      const json = await res.json();
+      if (json.success) {
+        setCurrentFiles(json.data);
+      } else {
+        setCurrentFiles([]);
+      }
+    } catch {
+      setCurrentFiles([]);
+    } finally {
+      setLoadingDir(false);
+    }
+  }, [companyId]);
+
+  // Navigate into a subdirectory.
+  const openDir = (name: string) => {
+    const next = [...dirStack, name];
+    setDirStack(next);
+    void loadDir(next.join('/'));
+  };
+
+  // Navigate up one level.
+  const upDir = () => {
+    if (dirStack.length === 0) return;
+    const next = dirStack.slice(0, -1);
+    setDirStack(next);
+    void loadDir(next.join('/'));
+  };
+
+  // Reset to the project root.
+  const toRoot = () => {
+    setDirStack([]);
+    void loadDir('');
+  };
+
+  // Switch the visible set when the parent-provided root files change
+  // (e.g. after a fresh poll/reload) if we're at the root.
+  useEffect(() => {
+    if (dirStack.length === 0) setCurrentFiles(files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
+
+  // html files at the current level (for quick "View" buttons).
+  const currentHtmlFiles = currentFiles.filter(
     (f) => f.type === 'file' && f.name.endsWith('.html'),
   );
 
@@ -683,40 +739,117 @@ function WorkspaceSection({
       <h2 className="mb-3 text-lg font-semibold text-zinc-100">
         Workspace Deliverables
       </h2>
-      {files.length === 0 ? (
+      {files.length === 0 && dirStack.length === 0 ? (
         <p className="text-sm text-zinc-500">
           The agents haven&apos;t created any files yet. Run an objective and their
           work will appear here.
         </p>
       ) : (
         <div className="space-y-4">
-          {htmlFiles.length > 0 && (
-            <div className="flex flex-wrap gap-3">
-              {htmlFiles.map((file) => (
-                <a
-                  key={file.path}
-                  href={`/api/companies/${companyId}/workspace?path=${encodeURIComponent(file.path)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-500"
-                >
-                  👁 View {file.name}
-                </a>
-              ))}
-            </div>
-          )}
+          {/* Breadcrumbs / navigation */}
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <button
+              onClick={toRoot}
+              className="rounded px-2 py-1 font-medium text-zinc-300 hover:bg-zinc-800"
+            >
+              📁 /workspace
+            </button>
+            {dirStack.map((seg, i) => {
+              const path = dirStack.slice(0, i + 1).join('/');
+              return (
+                <span key={path} className="flex items-center gap-2">
+                  <span className="text-zinc-600">/</span>
+                  <button
+                    onClick={() => {
+                      const next = dirStack.slice(0, i + 1);
+                      setDirStack(next);
+                      void loadDir(path);
+                    }}
+                    className="rounded px-2 py-1 text-zinc-300 hover:bg-zinc-800"
+                  >
+                    {seg}
+                  </button>
+                </span>
+              );
+            })}
+            {dirStack.length > 0 && (
+              <button
+                onClick={upDir}
+                className="ml-1 rounded border border-zinc-700 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:border-brand-500 hover:text-brand-300"
+              >
+                ← Up
+              </button>
+            )}
+          </div>
+
+          {/* Open the root directory in one click */}
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() =>
+                window.open(
+                  `/api/companies/${companyId}/workspace?path=${encodeURIComponent(currentPath || '')}`,
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/60 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-brand-500 hover:text-brand-300"
+            >
+              ⬆ Open {currentPath ? currentPath : 'Project Root'} folder
+            </button>
+            {currentHtmlFiles.length > 0 && (
+              <a
+                href={`/api/companies/${companyId}/workspace?path=${encodeURIComponent(
+                  currentPath ? `${currentPath}/index.html` : 'index.html',
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+              >
+                👁 View {currentHtmlFiles[0].name}
+              </a>
+            )}
+          </div>
+
+          {/* File listing (one level deep) */}
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Files ({files.length})
+              {currentPath ? `Contents of ${currentPath} (` : 'Files ('}
+              {currentFiles.length})
             </p>
-            <div className="grid gap-1 font-mono text-xs sm:grid-cols-2">
-              {files.map((file) => (
-                <div key={file.path} className="flex items-center gap-2 text-zinc-400">
-                  <span>{file.type === 'directory' ? '📁' : '📄'}</span>
-                  <span>{file.path}</span>
-                </div>
-              ))}
-            </div>
+            {loadingDir ? (
+              <p className="text-sm text-zinc-500">Loading...</p>
+            ) : currentFiles.length === 0 ? (
+              <p className="text-sm text-zinc-500">This directory is empty.</p>
+            ) : (
+              <div className="grid gap-1 font-mono text-xs sm:grid-cols-2">
+                {currentFiles.map((file) =>
+                  file.type === 'directory' ? (
+                    <button
+                      key={file.path}
+                      onClick={() => openDir(file.name)}
+                      className="flex items-center gap-2 rounded px-1 py-1 text-left text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-brand-300"
+                    >
+                      <span>📁</span>
+                      <span className="truncate">{file.name}</span>
+                      <span className="ml-auto text-zinc-600">/</span>
+                    </button>
+                  ) : (
+                    <a
+                      key={file.path}
+                      href={`/api/companies/${companyId}/workspace?path=${encodeURIComponent(
+                        currentPath ? `${currentPath}/${file.name}` : file.name,
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 rounded px-1 py-1 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                    >
+                      <span>📄</span>
+                      <span className="truncate">{file.name}</span>
+                    </a>
+                  ),
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -52,8 +52,9 @@ export async function GET(
 }
 
 /**
- * Recursively list non-git files in a company's workspace directory.
- * Returns simple metadata for the UI (path, name, type).
+ * List the top-level entries of a company's workspace directory (non-recursive).
+ * Returns only the items directly in the project root so the UI shows a compact
+ * list; dirs can be expanded by navigating the workspace route.
  */
 async function listWorkspaceFiles(companyId: string): Promise<
   { path: string; name: string; type: 'file' | 'directory' }[]
@@ -61,26 +62,27 @@ async function listWorkspaceFiles(companyId: string): Promise<
   const workspaceRoot = path.join(process.cwd(), '..', '..', '.workspaces', companyId);
   const results: { path: string; name: string; type: 'file' | 'directory' }[] = [];
 
-  async function walk(dir: string, relBase: string): Promise<void> {
-    let entries;
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      return; // directory doesn't exist yet
-    }
-
-    for (const entry of entries) {
-      if (entry.name === '.git') continue;
-      const rel = relBase ? `${relBase}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        results.push({ path: rel, name: entry.name, type: 'directory' });
-        await walk(path.join(dir, entry.name), rel);
-      } else {
-        results.push({ path: rel, name: entry.name, type: 'file' });
-      }
-    }
+  let entries;
+  try {
+    entries = await fs.readdir(workspaceRoot, { withFileTypes: true });
+  } catch {
+    return results; // directory doesn't exist yet
   }
 
-  await walk(workspaceRoot, '');
+  for (const entry of entries) {
+    if (entry.name === '.git') continue;
+    results.push({
+      path: entry.name,
+      name: entry.name,
+      type: entry.isDirectory() ? 'directory' : 'file',
+    });
+  }
+
+  // Sort: directories first, then files, each alphabetically.
+  results.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
   return results;
 }

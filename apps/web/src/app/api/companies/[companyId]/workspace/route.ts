@@ -30,9 +30,9 @@ export async function GET(
 
     const stat = await fs.stat(resolved).catch(() => null);
     if (!stat || stat.isDirectory()) {
-      // If a directory is requested, try to serve an index.html in it
-      const indexResolved = path.join(resolved, 'index.html').replace(/\/+$/, '');
-      return serveFile(indexResolved, workspaceRoot);
+      // If a directory is requested, return a JSON listing of its contents
+      // so the file explorer can navigate into folders.
+      return listDirectory(resolved, workspaceRoot);
     }
 
     return serveFile(resolved, workspaceRoot);
@@ -42,6 +42,44 @@ export async function GET(
       { status: 500 },
     );
   }
+}
+
+/**
+ * List the entries of a directory inside the workspace.
+ * Returns { path, name, type } for each child (non-recursive).
+ */
+async function listDirectory(
+  dirPath: string,
+  workspaceRoot: string,
+): Promise<Response> {
+  const resolved = path.resolve(dirPath);
+  if (!resolved.startsWith(workspaceRoot)) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
+
+  let entries;
+  try {
+    entries = await fs.readdir(resolved, { withFileTypes: true });
+  } catch {
+    return NextResponse.json({ success: false, error: 'Directory not found' }, { status: 404 });
+  }
+
+  const items: { path: string; name: string; type: 'file' | 'directory' }[] = [];
+  for (const entry of entries) {
+    if (entry.name === '.git') continue;
+    items.push({
+      path: entry.name,
+      name: entry.name,
+      type: entry.isDirectory() ? 'directory' : 'file',
+    });
+  }
+
+  items.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  return NextResponse.json({ success: true, data: items });
 }
 
 async function serveFile(filePath: string, workspaceRoot: string): Promise<Response> {
