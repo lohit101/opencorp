@@ -204,6 +204,7 @@ export type EventType =
   | 'agent.tool_called'
   | 'agent.tool_completed'
   | 'agent.message_sent'
+  | 'agent.asked_user'
   | 'agent.error'
   | 'agent.iteration_limit'
   | 'task.created'

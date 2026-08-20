@@ -92,6 +92,10 @@ export class AgentRuntime {
         result: result,
       });
 
+      // Agent learning: store a durable memory of what was accomplished so
+      // future runs benefit from this agent's experience.
+      await this.storeLearning(task, result);
+
       return completedTask;
     } catch (error) {
       const failedTask: Task = {
@@ -119,6 +123,26 @@ export class AgentRuntime {
   cancel(): void {
     if (this.abortController) {
       this.abortController.abort();
+    }
+  }
+
+  /**
+   * Store a durable "lesson learned" memory after a task completes, so the
+   * agent (and its team) benefit from this experience on future runs.
+   */
+  private async storeLearning(task: Task, result: string): Promise<void> {
+    try {
+      const summary = result.slice(0, 2000);
+      await this.memory.store({
+        companyId: this.agent.companyId,
+        type: 'task',
+        key: `task:${task.id}:outcome`,
+        content: `[${this.agent.name} (${this.agent.role})] Completed task "${task.title}". Outcome: ${summary}`,
+        tags: ['learning', 'task-outcome', this.agent.role.toLowerCase()],
+        sourceAgentId: this.agent.id,
+      });
+    } catch {
+      // Learning is best-effort; never fail the task because memory failed.
     }
   }
 

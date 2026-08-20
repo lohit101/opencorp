@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { CompanyRepository, AgentRepository, TaskRepository, EventStore, MessageRepository } from '@opencorp/db';
+import { CompanyRepository, AgentRepository, TaskRepository, EventStore, MessageRepository, QuestionRepository } from '@opencorp/db';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -8,6 +8,7 @@ const agentRepo = new AgentRepository();
 const taskRepo = new TaskRepository();
 const eventStore = new EventStore();
 const messageRepo = new MessageRepository();
+const questionRepo = new QuestionRepository();
 
 // GET /api/companies/[companyId] - get a single company with its full state
 export async function GET(
@@ -24,12 +25,13 @@ export async function GET(
       );
     }
 
-    const [agents, tasks, events, messages, files] = await Promise.all([
+    const [agents, tasks, events, messages, files, questions] = await Promise.all([
       agentRepo.findByCompany(companyId),
       taskRepo.findByCompany(companyId),
       eventStore.findByCompany(companyId, 300),
       messageRepo.findByCompany(companyId),
       listWorkspaceFiles(companyId),
+      questionRepo.findByCompany(companyId),
     ]);
 
     return NextResponse.json({
@@ -41,6 +43,7 @@ export async function GET(
         events,
         messages,
         files,
+        questions,
       },
     });
   } catch (error) {

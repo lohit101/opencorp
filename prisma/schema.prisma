@@ -31,6 +31,7 @@ model Company {
   memories    Memory[]
   events      SystemEvent[]
   messages    Message[]
+  questions   Question[]
   workspaces  Workspace[]
 }
 
@@ -59,6 +60,7 @@ model Agent {
   sentMessages  Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
   assignedTasks Task[]
+  questions     Question[]
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +87,7 @@ model Task {
   parentTask      Task?     @relation("ChildTasks", fields: [parentTaskId], references: [id])
   childTasks      Task[]    @relation("ChildTasks")
   messages        Message[]
+  questions       Question[]
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +125,27 @@ model Memory {
   updatedAt     DateTime @updatedAt
 
   company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Question (agent asks the user for input)
+// ---------------------------------------------------------------------------
+
+model Question {
+  id          String   @id @default(uuid())
+  companyId   String
+  agentId     String
+  taskId      String?
+  question    String
+  context     String?
+  status      String   @default("pending") // pending | answered | dismissed
+  answer      String?
+  createdAt   DateTime @default(now())
+  answeredAt  DateTime?
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  agent       Agent    @relation(fields: [agentId], references: [id])
+  task        Task?    @relation(fields: [taskId], references: [id])
 }
 
 // ---------------------------------------------------------------------------

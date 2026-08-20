@@ -68,6 +68,19 @@ interface WorkspaceFile {
   type: 'file' | 'directory';
 }
 
+interface PendingQuestion {
+  id: string;
+  companyId: string;
+  agentId: string;
+  taskId?: string;
+  question: string;
+  context?: string;
+  status: 'pending' | 'answered' | 'dismissed';
+  answer?: string;
+  createdAt: string;
+  answeredAt?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -79,6 +92,7 @@ export default function CompanyDashboard() {
   const [events, setEvents] = useState<SystemEvent[]>([]);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   const [allCompanies, setAllCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +132,7 @@ export default function CompanyDashboard() {
         setEvents(json.data.events);
         setMessages(json.data.messages);
         setFiles(json.data.files ?? []);
+        setQuestions(json.data.questions ?? []);
         // Only refresh the objective from the server if the user isn't drafting
         // a new one (avoids clobbering in-progress input during polling).
         if (!isEditingObjective.current) {
@@ -128,6 +143,37 @@ export default function CompanyDashboard() {
       setError(err instanceof Error ? err.message : 'Failed to load company');
     }
   }, []);
+
+  const loadQuestions = useCallback(async (companyId: string) => {
+    try {
+      const res = await fetch(`/api/companies/${companyId}/questions`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setQuestions(json.data);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const answerQuestion = async (questionId: string, answer: string) => {
+    if (!company) return;
+    try {
+      const res = await fetch(
+        `/api/companies/${company.id}/questions/${questionId}/answer`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answer }),
+        },
+      );
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      await loadQuestions(company.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to answer question');
+    }
+  };
 
   // Load the list of existing companies on mount.
   useEffect(() => {
@@ -261,11 +307,15 @@ export default function CompanyDashboard() {
   useEffect(() => {
     if (!company?.id) return;
     loadData(company.id);
-    pollTimer.current = setInterval(() => loadData(company.id), 2000);
+    loadQuestions(company.id);
+    pollTimer.current = setInterval(() => {
+      loadData(company.id);
+      loadQuestions(company.id);
+    }, 2000);
     return () => {
       if (pollTimer.current) clearInterval(pollTimer.current);
     };
-  }, [company?.id, loadData]);
+  }, [company?.id, loadData, loadQuestions]);
 
   // Track whether the objective is in progress based on task states
   useEffect(() => {
@@ -327,6 +377,12 @@ export default function CompanyDashboard() {
                 disabled={agents.length === 0}
               />
             </div>
+
+            <QuestionsPanel
+              questions={questions}
+              agents={agents}
+              onAnswer={answerQuestion}
+            />
 
             <AgentsSection agents={agents} />
 
@@ -675,6 +731,99 @@ function ObjectivePanel({
         )}
       </form>
     </Card>
+  );
+}
+
+function QuestionsPanel({
+  questions,
+  agents,
+  onAnswer,
+}: {
+  questions: PendingQuestion[];
+  agents: Agent[];
+  onAnswer: (questionId: string, answer: string) => Promise<void>;
+}) {
+  const pending = questions.filter((q) => q.status === 'pending');
+  const agentName = (id?: string) =>
+    agents.find((a) => a.id === id)?.name ?? 'Agent';
+
+  if (pending.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-amber-700/40 bg-zinc-900/60 p-5 shadow-xl shadow-card/20">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-400">
+          ❓ Agents Need Your Input ({pending.length})
+        </h3>
+        <span className="flex items-center gap-1.5 text-xs text-amber-400">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+          Awaiting reply
+        </span>
+      </div>
+      <div className="space-y-3">
+        {pending.map((q) => (
+          <QuestionCard key={q.id} question={q} agentName={agentName(q.agentId)} onAnswer={onAnswer} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuestionCard({
+  question,
+  agentName,
+  onAnswer,
+}: {
+  question: PendingQuestion;
+  agentName: string;
+  onAnswer: (questionId: string, answer: string) => Promise<void>;
+}) {
+  const [answer, setAnswer] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!answer.trim()) return;
+    setSubmitting(true);
+    try {
+      await onAnswer(question.id, answer.trim());
+      setAnswer('');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-700/40 bg-zinc-900/60 p-4">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🤖</span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-zinc-100">{agentName}</p>
+          <p className="text-[10px] text-zinc-500">
+            {new Date(question.createdAt).toLocaleTimeString()}
+          </p>
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-zinc-200">{question.question}</p>
+      {question.context && (
+        <p className="mt-1 text-xs text-zinc-500">{question.context}</p>
+      )}
+      <form onSubmit={submit} className="mt-3 flex gap-2">
+        <input
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          placeholder="Type your answer..."
+          className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-amber-500"
+        />
+        <button
+          type="submit"
+          disabled={submitting || !answer.trim()}
+          className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+        >
+          {submitting ? '...' : 'Reply'}
+        </button>
+      </form>
+    </div>
   );
 }
 

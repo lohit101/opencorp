@@ -108,7 +108,7 @@ function buildAgentByRole(role: string): {
 
 You are responsible for project planning and delegation. Delegate implementation tasks to specialists using create_task. **IMPORTANT**: Once you have delegated all the implementation work via create_task, do NOT keep re-checking the workspace or re-delegating. Immediately summarize your plan and report completion — your team members will carry out the delegated tasks after you respond.`,
       skillIds: ['ceo'],
-      toolNames: ['send_message', 'list_agents', 'create_task', 'read_file', 'write_file', 'list_files', 'terminal'],
+      toolNames: ['send_message', 'list_agents', 'create_task', 'read_file', 'write_file', 'list_files', 'terminal', 'ask_user', 'remember', 'get_messages'],
     };
   }
 
@@ -117,7 +117,7 @@ You are responsible for project planning and delegation. Delegate implementation
       description: 'Software Engineer - implements technical solutions, writes code, and builds projects.',
       systemPrompt: 'You are a software engineer on an AI software team. Your job is to implement features and build projects. You work inside a shared workspace. When assigned a task, you should:\n1. Inspect the workspace to understand the project.\n2. Create and modify files as needed.\n3. Install dependencies and build/test your work.\n4. Report your results clearly.\n\nWrite clean, production-quality code with proper types.',
       skillIds: ['engineering', 'engineering/nextjs'],
-      toolNames: ['terminal', 'read_file', 'write_file', 'list_files', 'git', 'send_message'],
+      toolNames: ['terminal', 'read_file', 'write_file', 'list_files', 'git', 'send_message', 'ask_user', 'remember', 'get_messages'],
     };
   }
 
@@ -126,7 +126,7 @@ You are responsible for project planning and delegation. Delegate implementation
       description: 'Research Analyst - gathers and analyzes information for the team.',
       systemPrompt: `You are a research analyst on an AI product team. Your job is to gather and synthesize information to help the team make decisions. When assigned a task, you should:\n1. Understand what the team needs to learn.\n2. Use your tools to inspect workspaces and available information.\n3. Produce a clear, well-organized research summary.\n4. Report your findings clearly.\n\nFocus on actionable insights.`,
       skillIds: [],
-      toolNames: ['read_file', 'write_file', 'list_files', 'send_message'],
+      toolNames: ['read_file', 'write_file', 'list_files', 'send_message', 'ask_user', 'remember', 'get_messages'],
     };
   }
 
@@ -135,7 +135,7 @@ You are responsible for project planning and delegation. Delegate implementation
       description: 'Quality Assurance Engineer - tests and verifies work products.',
       systemPrompt: `You are a QA engineer on an AI software team. Your job is to test and verify completed work. When assigned a task, you should:\n1. Inspect the deliverables in the workspace.\n2. Identify bugs, edge cases, and quality issues.\n3. Run tests or checks where possible.\n4. Report issues clearly with reproduction steps.\n\nBe thorough and specific.`,
       skillIds: ['engineering'],
-      toolNames: ['terminal', 'read_file', 'write_file', 'list_files', 'send_message'],
+      toolNames: ['terminal', 'read_file', 'write_file', 'list_files', 'send_message', 'ask_user', 'remember', 'get_messages'],
     };
   }
 
@@ -144,7 +144,7 @@ You are responsible for project planning and delegation. Delegate implementation
       description: 'Product Designer - creates design direction and user-facing assets.',
       systemPrompt: `You are a product designer on an AI team. Your job is to create design direction and user-facing assets. When assigned a task, you should:\n1. Understand the product and its users.\n2. Define a clear, modern design direction.\n3. Produce design artifacts such as HTML/CSS mockups, style guides, or wireframes in the workspace.\n4. Explain your design decisions clearly.`,
       skillIds: ['engineering/nextjs'],
-      toolNames: ['read_file', 'write_file', 'list_files', 'send_message'],
+      toolNames: ['read_file', 'write_file', 'list_files', 'send_message', 'ask_user', 'remember', 'get_messages'],
     };
   }
 
@@ -153,6 +153,6 @@ You are responsible for project planning and delegation. Delegate implementation
     description: 'Your role is: ' + role,
     systemPrompt: `You are a member of an AI company with the role: ${role}. Work to complete the tasks assigned to you using the tools available in your workspace. Communicate with the CEO when you need guidance.`,
     skillIds: [],
-    toolNames: ['terminal', 'read_file', 'write_file', 'list_files', 'send_message'],
+    toolNames: ['terminal', 'read_file', 'write_file', 'list_files', 'send_message', 'ask_user', 'remember', 'get_messages'],
   };
 }

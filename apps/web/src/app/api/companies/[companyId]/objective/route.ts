@@ -18,6 +18,9 @@ import {
   CreateTaskTool,
   ListAgentsTool,
   GitTool,
+  AskUserTool,
+  RememberTool,
+  GetMessagesTool,
   type PendingTask,
   type Tool,
 } from '@opencorp/tools';
@@ -31,6 +34,7 @@ const companyRepo = new CompanyRepository();
 const agentRepo = new AgentRepository();
 const taskRepo = new TaskRepository();
 const messageRepo = new MessageRepository();
+const questionRepo = new QuestionRepository();
 const eventStore = new EventStore();
 const memoryStore = new PrismaMemoryStore();
 
@@ -388,6 +392,61 @@ function buildTools(params: {
     })),
   }));
 
+  // Ask-user tool: records the question, then blocks the agent loop until the
+  // user answers (or dismisses) it in the UI.
+  const askUserTool = new AskUserTool();
+  askUserTool.setQuestionHandler(async (question) => {
+    await questionRepo.create({
+      companyId: question.companyId,
+      agentId: question.agentId,
+      taskId: question.taskId,
+      question: question.question,
+      context: question.context,
+    });
+    await eventStore.create({
+      companyId,
+      type: 'agent.asked_user',
+      agentId: question.agentId,
+      eventData: { question: question.question },
+    });
+  });
+  askUserTool.setAnswerResolver(async (questionId) => {
+    const q = await questionRepo.findById(questionId);
+    if (!q) return null;
+    if (q.status === 'answered' && q.answer) return q.answer;
+    if (q.status === 'dismissed') return null;
+    return undefined; // still pending
+  });
+
+  // Remember tool: lets agents store durable learnings across runs.
+  const rememberTool = new RememberTool();
+  rememberTool.setMemoryHandler(async (entry) => {
+    await memoryStore.store({
+      companyId,
+      type: entry.type,
+      key: entry.key,
+      content: entry.content,
+      tags: entry.tags,
+      sourceAgentId: agentId,
+    });
+    await eventStore.create({
+      companyId,
+      type: 'memory.created',
+      agentId,
+      eventData: { key: entry.key, type: entry.type },
+    });
+  });
+
+  // Get-messages tool: lets agents read messages sent to them by teammates.
+  const getMessagesTool = new GetMessagesTool();
+  getMessagesTool.setMessagesProvider(async ({ companyId: cid, agentId: aid, limit }) => {
+    const all = await messageRepo.findByCompany(cid);
+    const mine = all.filter(
+      (m) => m.recipientAgentId === aid || m.recipientAgentId === null,
+    );
+    return mine.slice(-(limit ?? 20));
+  });
+
   return [
     new TerminalTool({ image: WORKSPACE_IMAGE, workspaceRoot: sandboxWorkspaceRoot(companyId) }),
     new ReadFileTool(sandbox),
@@ -397,6 +456,9 @@ function buildTools(params: {
     sendMessageTool,
     createTaskTool,
     listAgentsTool,
+    askUserTool,
+    rememberTool,
+    getMessagesTool,
   ];
 }
 
