@@ -335,7 +335,12 @@ export default function CompanyDashboard() {
 
             <AgentsSection agents={agents} />
 
-            <DepartmentTree agents={agents} />
+            <DepartmentTree
+              agents={agents}
+              tasks={tasks}
+              events={events}
+              messages={messages}
+            />
 
             <VirtualOffice agents={agents} />
 

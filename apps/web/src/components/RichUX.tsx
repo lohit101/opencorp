@@ -866,7 +866,19 @@ const DEPARTMENT_COLORS: Record<string, string> = {
   general: 'border-zinc-600/40 text-zinc-300',
 };
 
-export function DepartmentTree({ agents }: { agents: Agent[] }) {
+export function DepartmentTree({
+  agents,
+  tasks,
+  events,
+  messages,
+}: {
+  agents: Agent[];
+  tasks: Task[];
+  events: SystemEvent[];
+  messages: AgentMessage[];
+}) {
+  const [view, setView] = useState<{ level: 'root' } | { level: 'dept'; dept: string } | { level: 'agent'; agentId: string }>({ level: 'root' });
+
   // Group agents by department.
   const departments = new Map<string, Agent[]>();
   for (const agent of agents) {
@@ -874,8 +886,45 @@ export function DepartmentTree({ agents }: { agents: Agent[] }) {
     if (!departments.has(dept)) departments.set(dept, []);
     departments.get(dept)!.push(agent);
   }
-
   const deptNames = Array.from(departments.keys()).sort();
+
+  const agentName = (id?: string) =>
+    agents.find((a) => a.id === id)?.name ?? 'system';
+
+  // Breadcrumb navigation
+  const breadcrumb = (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+      <button
+        onClick={() => setView({ level: 'root' })}
+        className={`rounded px-2 py-1 font-medium ${view.level === 'root' ? 'text-brand-300 bg-brand-600/20' : 'text-zinc-300 hover:bg-zinc-800'}`}
+      >
+        🌳 All Departments
+      </button>
+      {view.level === 'dept' && (
+        <>
+          <span className="text-zinc-600">/</span>
+          <span className="rounded px-2 py-1 font-medium capitalize text-brand-300 bg-brand-600/20">
+            {view.dept}
+          </span>
+        </>
+      )}
+      {view.level === 'agent' && (
+        <>
+          <span className="text-zinc-600">/</span>
+          <button
+            onClick={() => setView({ level: 'dept', dept: agents.find((a) => a.id === view.agentId)?.department || 'general' })}
+            className="rounded px-2 py-1 font-medium capitalize text-zinc-300 hover:bg-zinc-800"
+          >
+            {agents.find((a) => a.id === view.agentId)?.department || 'general'}
+          </button>
+          <span className="text-zinc-600">/</span>
+          <span className="rounded px-2 py-1 font-medium text-brand-300 bg-brand-600/20">
+            {agentName(view.agentId)}
+          </span>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
@@ -887,61 +936,297 @@ export function DepartmentTree({ agents }: { agents: Agent[] }) {
           {agents.length} agents · {deptNames.length} departments
         </span>
       </div>
+
       {agents.length === 0 ? (
         <p className="text-sm text-zinc-500">
           Add agents to build your organization tree.
         </p>
       ) : (
-        <div className="space-y-3">
-          {deptNames.map((dept) => {
-            const members = departments.get(dept)!;
-            const active = members.filter((a) => a.state !== 'idle').length;
-            return (
-              <div
-                key={dept}
-                className={`rounded-lg border ${DEPARTMENT_COLORS[dept] ?? DEPARTMENT_COLORS.general} bg-zinc-900/60 p-3`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-base">
-                    {DEPARTMENT_ICONS[dept] ?? '🏢'}
-                  </span>
-                  <span className="text-sm font-semibold capitalize text-zinc-100">
+        <>
+          {breadcrumb}
+          {view.level === 'root' && (
+            <RootDept
+              departments={departments}
+              onSelectDept={(dept) => setView({ level: 'dept', dept })}
+            />
+          )}
+          {view.level === 'dept' && (
+            <DeptDetail
+              dept={view.dept}
+              members={departments.get(view.dept) ?? []}
+              onSelectAgent={(agentId) => setView({ level: 'agent', agentId })}
+            />
+          )}
+          {view.level === 'agent' && (
+            <AgentDetail
+              agent={agents.find((a) => a.id === view.agentId)!}
+              tasks={tasks}
+              events={events}
+              messages={messages}
+              agentName={agentName}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root view: departments as clickable branch nodes
+// ---------------------------------------------------------------------------
+
+function RootDept({
+  departments,
+  onSelectDept,
+}: {
+  departments: Map<string, Agent[]>;
+  onSelectDept: (dept: string) => void;
+}) {
+  const deptNames = Array.from(departments.keys()).sort();
+  return (
+    <div className="space-y-3">
+      {deptNames.map((dept) => {
+        const members = departments.get(dept)!;
+        const active = members.filter((a) => a.state !== 'idle').length;
+        return (
+          <button
+            key={dept}
+            onClick={() => onSelectDept(dept)}
+            className={`w-full rounded-lg border ${DEPARTMENT_COLORS[dept] ?? DEPARTMENT_COLORS.general} bg-zinc-900/60 p-4 text-left transition-colors hover:border-brand-500 hover:bg-zinc-800/60`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{DEPARTMENT_ICONS[dept] ?? '🏢'}</span>
+                <div>
+                  <p className="text-base font-semibold capitalize text-zinc-100">
                     {dept}
-                  </span>
-                  <span className="text-[10px] text-zinc-500">
-                    ({members.length} agent{members.length !== 1 ? 's' : ''})
-                  </span>
-                  {active > 0 && (
-                    <span className="flex items-center gap-1 text-[10px] text-brand-400">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-400" />
-                      {active} active
-                    </span>
-                  )}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {members.map((agent) => (
-                    <div
-                      key={agent.id}
-                      className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1"
-                    >
-                      <AgentAvatar
-                        name={agent.name}
-                        role={agent.role}
-                        state={agent.state}
-                        size="sm"
-                      />
-                      <span className="text-xs text-zinc-300">{agent.name}</span>
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          agent.state === 'idle' ? 'bg-zinc-500' : 'bg-brand-400 animate-pulse'
-                        }`}
-                      />
-                    </div>
-                  ))}
+                  </p>
+                  <p className="text-[10px] text-zinc-500">
+                    {members.length} agent{members.length !== 1 ? 's' : ''}
+                  </p>
                 </div>
               </div>
-            );
-          })}
+              <div className="flex items-center gap-2">
+                {active > 0 && (
+                  <span className="flex items-center gap-1 text-[10px] text-brand-400">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-400" />
+                    {active} active
+                  </span>
+                )}
+                <span className="text-zinc-600">›</span>
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {members.map((agent) => (
+                <span
+                  key={agent.id}
+                  className={`h-2 w-2 rounded-full ${agent.state === 'idle' ? 'bg-zinc-500' : 'bg-brand-400 animate-pulse'}`}
+                  title={agent.name}
+                />
+              ))}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Level 2: agents within a department as clickable nodes
+// ---------------------------------------------------------------------------
+
+function DeptDetail({
+  dept,
+  members,
+  onSelectAgent,
+}: {
+  dept: string;
+  members: Agent[];
+  onSelectAgent: (agentId: string) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-3 text-xs text-zinc-500">
+        Click an agent to zoom into their individual monitoring.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {members.map((agent) => (
+          <button
+            key={agent.id}
+            onClick={() => onSelectAgent(agent.id)}
+            className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-4 text-left transition-colors hover:border-brand-500 hover:bg-zinc-800/60"
+          >
+            <div className="flex items-center gap-2">
+              <AgentAvatar name={agent.name} role={agent.role} state={agent.state} size="lg" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-zinc-100">
+                  {agent.name}
+                </p>
+                <p className="text-[10px] text-zinc-500">{agent.role}</p>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${agent.state === 'idle' ? 'bg-zinc-500' : 'bg-brand-400 animate-pulse'}`}
+              />
+              <span className="text-[10px] text-zinc-400">{agent.state}</span>
+              <span className="ml-auto text-zinc-600">›</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Level 3: individual agent monitoring
+// ---------------------------------------------------------------------------
+
+function AgentDetail({
+  agent,
+  tasks,
+  events,
+  messages,
+  agentName,
+}: {
+  agent: Agent;
+  tasks: Task[];
+  events: SystemEvent[];
+  messages: AgentMessage[];
+  agentName: (id?: string) => string;
+}) {
+  const agentTasks = tasks.filter((t) => t.assignedAgentId === agent.id);
+  const agentEvents = events.filter((e) => e.agentId === agent.id);
+  const agentMessages = messages.filter(
+    (m) => m.senderAgentId === agent.id || m.recipientAgentId === agent.id,
+  );
+
+  const statusColors: Record<string, string> = {
+    pending: 'border-zinc-700 text-zinc-400',
+    assigned: 'border-amber-700 text-amber-400',
+    running: 'border-brand-500 text-brand-400',
+    blocked: 'border-orange-700 text-orange-400',
+    completed: 'border-green-700 text-green-400',
+    failed: 'border-red-700 text-red-400',
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Agent header */}
+      <div className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-4">
+        <div className="flex items-center gap-3">
+          <AgentAvatar name={agent.name} role={agent.role} state={agent.state} size="lg" />
+          <div>
+            <p className="text-base font-semibold text-zinc-100">{agent.name}</p>
+            <p className="text-xs text-zinc-500">
+              {agent.role} · {agent.department || 'general'}
+            </p>
+          </div>
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400">
+            <span
+              className={`h-2 w-2 rounded-full ${agent.state === 'idle' ? 'bg-zinc-500' : 'bg-brand-400 animate-pulse'}`}
+            />
+            {agent.state}
+          </span>
+        </div>
+        <p className="mt-2 text-sm text-zinc-400">{agent.description}</p>
+      </div>
+
+      {/* Agent stats */}
+      <div className="grid grid-cols-4 gap-2">
+        <Stat label="Tasks" value={agentTasks.length} />
+        <Stat
+          label="Done"
+          value={agentTasks.filter((t) => t.status === 'completed').length}
+          color="text-green-400"
+        />
+        <Stat
+          label="Failed"
+          value={agentTasks.filter((t) => t.status === 'failed').length}
+          color="text-red-400"
+        />
+        <Stat
+          label="Msgs"
+          value={agentMessages.length}
+          color="text-purple-400"
+        />
+      </div>
+
+      {/* Agent tasks */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          Tasks ({agentTasks.length})
+        </p>
+        {agentTasks.length === 0 ? (
+          <p className="text-sm text-zinc-500">No tasks assigned to this agent.</p>
+        ) : (
+          <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+            {agentTasks.map((task) => (
+              <div key={task.id} className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-zinc-100">{task.title}</p>
+                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${statusColors[task.status] ?? 'text-zinc-400'}`}>
+                    {task.status}
+                  </span>
+                </div>
+                {task.result && (
+                  <p className="mt-1 line-clamp-2 text-[11px] text-zinc-400">{task.result}</p>
+                )}
+                {task.error && (
+                  <p className="mt-1 line-clamp-2 text-[11px] text-red-400">Error: {task.error}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Agent activity */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          Activity ({agentEvents.length})
+        </p>
+        {agentEvents.length === 0 ? (
+          <p className="text-sm text-zinc-500">No activity yet.</p>
+        ) : (
+          <div className="max-h-60 space-y-1 overflow-y-auto pr-1 font-mono text-[11px]">
+            {agentEvents.slice().reverse().map((e) => (
+              <div key={e.id} className="flex gap-2 py-0.5">
+                <span className="shrink-0 text-zinc-600">
+                  {new Date(e.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="text-zinc-300">{e.type}</span>
+                {e.data && Object.keys(e.data).length > 0 && (
+                  <span className="text-zinc-600">
+                    {JSON.stringify(e.data).slice(0, 60)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Agent messages */}
+      {agentMessages.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Messages ({agentMessages.length})
+          </p>
+          <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+            {agentMessages.slice().reverse().map((m) => (
+              <div key={m.id} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2">
+                <p className="text-[10px] text-zinc-500">
+                  {agentName(m.senderAgentId)} → {agentName(m.recipientAgentId)} ·{' '}
+                  {new Date(m.timestamp).toLocaleTimeString()}
+                </p>
+                <p className="mt-0.5 line-clamp-2 text-[11px] text-zinc-400">{m.content}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
