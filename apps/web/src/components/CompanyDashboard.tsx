@@ -98,6 +98,10 @@ export default function CompanyDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [objective, setObjective] = useState('');
   const [objectiveRunning, setObjectiveRunning] = useState(false);
+  // The root task id of the currently running objective. Captured from the
+  // objective API response so "Stop Run" can cancel the exact run in progress
+  // (rather than guessing by task title, which breaks on replays/empty state).
+  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
 
   // Create company form
   const [companyName, setCompanyName] = useState('');
@@ -257,6 +261,8 @@ export default function CompanyDashboard() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
+      // Remember the root task id so "Stop Run" cancels this exact run.
+      setRunningTaskId(json.data?.taskId ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start objective');
       setObjectiveRunning(false);
@@ -268,14 +274,20 @@ export default function CompanyDashboard() {
   const cancelObjective = async () => {
     if (!company) return;
     setError(null);
-    // Find the running root task to cancel
-    const rootTask = tasks.find((t) => t.title === 'Execute company objective' && !t.parentTaskId);
-    if (!rootTask) return;
+    // Cancel the exact run we started. Fall back to the running root task in
+    // the loaded task list if we don't have the id (e.g. a run started before
+    // this change, or a replay).
+    const taskId =
+      runningTaskId ??
+      tasks.find(
+        (t) => t.title === 'Execute company objective' && !t.parentTaskId,
+      )?.id;
+    if (!taskId) return;
     try {
       await fetch(`/api/companies/${company.id}/objective/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: rootTask.id }),
+        body: JSON.stringify({ taskId }),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel objective');
@@ -295,6 +307,7 @@ export default function CompanyDashboard() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
+      setRunningTaskId(json.data?.taskId ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to replay objective');
       setObjectiveRunning(false);
@@ -326,6 +339,7 @@ export default function CompanyDashboard() {
       tasks.every((t) => ['completed', 'failed'].includes(t.status))
     ) {
       setObjectiveRunning(false);
+      setRunningTaskId(null);
     }
   }, [tasks]);
 
@@ -1197,7 +1211,7 @@ function formatEvent(
   const tag = event.agentId ? agentName(event.agentId) : 'company';
   switch (event.type) {
     case 'task.created':
-      return `[${tag}] created task "${event.data.title}"${event.data.assignedAgentId ? ` → ${agentName(event.data.assignedAgentId)}` : ''}`;
+      return `[${tag}] created task "${event.data.title}"${event.data.assignedAgentId ? ` → ${agentName(String(event.data.assignedAgentId))}` : ''}`;
     case 'task.started':
       return `[${tag}] started working`;
     case 'task.completed':

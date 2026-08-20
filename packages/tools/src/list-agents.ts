@@ -6,6 +6,7 @@ export interface AgentRoster {
     id: string;
     name: string;
     role: string;
+    department?: string;
     description: string;
     state: string;
   }[];

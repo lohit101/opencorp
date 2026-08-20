@@ -23,7 +23,7 @@ export interface PendingQuestion {
  * the database until the user answers (or the question is dismissed).
  * Returns null if the question is dismissed or times out.
  */
-export type AnswerResolver = (questionId: string) => Promise<string | null>;
+export type AnswerResolver = (questionId: string) => Promise<string | null | undefined>;
 
 /**
  * Ask User tool - allows an agent to ask the user a question when it needs

@@ -28,6 +28,8 @@ export class AgentRuntime {
 
   private currentTask: Task | null = null;
   private abortController: AbortController | null = null;
+  /** Optional external signal (e.g. from an orchestrator) that aborts the task. */
+  private readonly externalSignal?: AbortSignal;
 
   constructor(params: {
     agent: AgentConfig;
@@ -38,6 +40,8 @@ export class AgentRuntime {
     eventHandler?: (event: SystemEvent) => Promise<void>;
     /** Max LLM tool round-trips before the loop gives up. Default: 80 for workers. */
     maxIterations?: number;
+    /** Optional external signal; when aborted, the running task is cancelled. */
+    signal?: AbortSignal;
   }) {
     this.agent = params.agent;
     this.llmProvider = params.llmProvider;
@@ -46,6 +50,7 @@ export class AgentRuntime {
     this.skillProvider = params.skillProvider;
     this.eventHandler = params.eventHandler;
     this.maxIterations = params.maxIterations ?? 80;
+    this.externalSignal = params.signal;
   }
 
   get agentId(): string {
@@ -63,6 +68,19 @@ export class AgentRuntime {
   async executeTask(task: Task): Promise<Task> {
     this.currentTask = task;
     this.abortController = new AbortController();
+
+    // If an external signal was provided, abort our internal controller whenever
+    // the external one is aborted so a single cancel() aborts every runtime.
+    const controller = this.abortController;
+    if (this.externalSignal) {
+      if (this.externalSignal.aborted) {
+        controller.abort();
+      } else {
+        this.externalSignal.addEventListener('abort', () => controller.abort(), {
+          once: true,
+        });
+      }
+    }
 
     await this.emitEvent('task.started', { taskId: task.id });
 

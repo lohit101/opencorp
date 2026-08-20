@@ -13,6 +13,7 @@
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "clean": "npm run clean --workspaces",
+    "reset": "node scripts/reset.mjs",
     "db:generate": "npx prisma generate",
     "db:push": "npx prisma db push",
     "db:studio": "npx prisma studio",

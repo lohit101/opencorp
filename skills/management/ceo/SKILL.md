@@ -22,6 +22,19 @@ This skill teaches an agent how to act as a CEO in an AI company.
 - Set appropriate priorities
 - Create dependencies between tasks where needed
 
+## Department-Aware Delegation
+
+- Use `list_agents` to see each agent's **department** as well as their role.
+- Match each task to the department whose domain it belongs to:
+  - **engineering** → code, builds, implementation
+  - **design** → UI, visual assets, layout
+  - **research** → information gathering, analysis
+  - **qa** → testing, verification, quality checks
+  - **marketing** → copy, campaigns, outreach
+  - **operations** → logistics, coordination, process
+- Prefer the department match over the role name when both are available.
+- If no agent matches a task's department, fall back to the closest role.
+
 ## Communication Style
 
 - Be clear and specific in instructions

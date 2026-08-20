@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { TaskRepository } from '@opencorp/db';
-import { activeRuns } from '@/lib/runs';
+import { cancelRun, isRunCancelled } from '@/lib/runs';
 
 const taskRepo = new TaskRepository();
 
@@ -19,15 +19,11 @@ export async function POST(
       );
     }
 
-    const runtimes = activeRuns.get(taskId);
-    if (runtimes && runtimes.length > 0) {
-      for (const runtime of runtimes) {
-        runtime.cancel();
-      }
-      activeRuns.delete(taskId);
-    }
+    // Signal the run to stop: abort any in-flight LLM/tool call and set the
+    // cancelled flag so the orchestrator halts before running more work.
+    const found = cancelRun(taskId);
 
-    // Mark the task as failed/blocked as it was cancelled
+    // Mark the task as failed/cancelled if it is still in a live state.
     const task = await taskRepo.findById(taskId);
     if (task && (task.status === 'running' || task.status === 'pending' || task.status === 'assigned')) {
       await taskRepo.updateError(taskId, 'Objective execution cancelled by user');
@@ -36,7 +32,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      data: { message: runtimes ? 'Objective cancelled' : 'No active run found (may already be complete)' },
+      data: { message: found ? 'Objective cancelled' : 'No active run found (may already be complete)' },
     });
   } catch (error) {
     return NextResponse.json(

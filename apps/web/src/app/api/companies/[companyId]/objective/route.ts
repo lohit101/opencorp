@@ -28,7 +28,7 @@ import {
 import { AgentRuntime, type SkillProvider } from '@opencorp/agent-runtime';
 import { SkillLoader } from '@opencorp/skills';
 import type { AgentConfig, Task, SystemEvent } from '@opencorp/shared';
-import { activeRuns } from '@/lib/runs';
+import { activeRuns, registerRun, isRunCancelled } from '@/lib/runs';
 import * as path from 'node:path';
 
 const companyRepo = new CompanyRepository();
@@ -159,8 +159,9 @@ async function runObjective(params: {
   // find them after the CEO's run.
   const delegatedTargetIds: string[] = [];
 
-  // Register the run for cancellation support.
-  activeRuns.set(taskId, []);
+  // Register the run for cancellation support and grab the shared state.
+  const run = registerRun(taskId);
+  const { controller } = run;
 
   try {
     const task = await taskRepo.findById(taskId);
@@ -178,6 +179,10 @@ async function runObjective(params: {
       { type: 'agent.started', agentId: ceo.id, taskId, eventData: {} },
     ]);
 
+    // The CEO is a planner: keep its loop bounded so it delegates and wraps up
+    // in a few steps rather than looping while workers do the heavy lifting.
+    // The CEO only gets delegation & communication tools — never file/terminal
+    // tools — so it must delegate actual implementation to specialists.
     const ceoTools = buildTools({
       companyId,
       agentId: ceo.id,
@@ -212,22 +217,35 @@ async function runObjective(params: {
 
     // The CEO is a planner: keep its loop bounded so it delegates and wraps up
     // in a few steps rather than looping while workers do the heavy lifting.
+    // Hard-restrict the CEO so it can NEVER do hands-on work (no file/terminal
+    // tools) — it must delegate everything to specialists.
+    const ceoForRun: AgentConfig = {
+      ...ceo,
+      toolNames: ['send_message', 'list_agents', 'create_task', 'ask_user', 'remember', 'get_messages'],
+    };
     const runner = new AgentRuntime({
-      agent: ceo,
+      agent: ceoForRun,
       llmProvider,
       tools: ceoTools,
       memory: memoryStore,
       skillProvider: makeSkillProvider(),
       eventHandler: persistEvent(companyId),
       maxIterations: 30,
+      signal: controller.signal,
     });
-    activeRuns.get(taskId)?.push(runner);
+    run.runtimes.push(runner);
 
     const ceoResult = await runner.executeTask({
       ...task,
       title: 'Execute company objective',
       description: objective,
     });
+
+    // If the user hit Stop during/after the CEO's planning loop, do not execute
+    // any delegated work — the objective is cancelled.
+    if (isRunCancelled(taskId)) {
+      return;
+    }
 
     // Execute delegated tasks after the CEO's planning loop. Tasks assigned to
     // different agents run in parallel; tasks assigned to the same agent run
@@ -257,16 +275,20 @@ async function runObjective(params: {
       // Run each agent's task chain in parallel across agents.
       const chains = Array.from(byAgent.entries()).map(async ([agentId, agentTasks]) => {
         for (const agentTask of agentTasks) {
+          if (isRunCancelled(taskId)) return; // stop early if cancelled
           await runAgentTask({
             companyId,
             rootTaskId: taskId,
             agentId,
             task: agentTask,
+            signal: controller.signal,
           });
         }
       });
       await Promise.all(chains);
     }
+
+    if (isRunCancelled(taskId)) return;
 
     const ceoResultText = ceoResult.result ?? 'Objective completed.';
     await taskRepo.updateResult(taskId, ceoResultText);
@@ -299,8 +321,10 @@ async function runAgentTask(params: {
   rootTaskId: string;
   agentId: string;
   task: import('@opencorp/shared').Task;
+  /** Optional external abort signal passed to the worker runtime. */
+  signal?: AbortSignal;
 }) {
-  const { companyId, rootTaskId, agentId, task } = params;
+  const { companyId, rootTaskId, agentId, task, signal } = params;
 
   const agent = await agentRepo.findById(agentId);
   if (!agent) return;
@@ -337,9 +361,10 @@ async function runAgentTask(params: {
     memory: memoryStore,
     skillProvider: makeSkillProvider(),
     eventHandler: persistEvent(companyId),
+    signal,
   });
   // Register the runtime so the run can be cancelled.
-  activeRuns.get(rootTaskId)?.push(runtime);
+  activeRuns.get(rootTaskId)?.runtimes.push(runtime);
 
   const result = await runtime.executeTask(task);
 
@@ -388,6 +413,7 @@ function buildTools(params: {
       id: a.id,
       name: a.name,
       role: a.role,
+      department: a.department,
       description: a.description,
       state: a.state,
     })),
