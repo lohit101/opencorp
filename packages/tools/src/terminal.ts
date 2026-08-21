@@ -35,7 +35,7 @@ export class TerminalTool implements Tool {
 
   async execute(
     call: ToolCall,
-    _context: ToolExecutionContext,
+    context: ToolExecutionContext,
   ): Promise<ToolExecutionResult> {
     const command = String(call.arguments.command ?? '');
     const workdir = call.arguments.workdir
@@ -47,7 +47,7 @@ export class TerminalTool implements Tool {
     }
 
     try {
-      const result = await this.sandbox.exec(command, workdir);
+      const result = await this.sandbox.exec(command, workdir, context.signal);
       return {
         success: result.exitCode === 0,
         data: {

@@ -124,6 +124,7 @@ export class Orchestrator {
       status: 'pending',
       assignedAgentId: ceoAgent.id,
       parentTaskId: null,
+      dependsOnTaskIds: [],
       priority: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

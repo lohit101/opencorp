@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process';
+import { exec, type ExecOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -76,15 +76,21 @@ export class DockerSandbox {
 
   /**
    * Execute a command inside the sandbox container.
+   * Honors AbortSignal so Stop Run can interrupt long-running commands.
    */
   async exec(
     command: string,
     workdir?: string,
+    signal?: AbortSignal,
   ): Promise<SandboxCommandResult> {
     await this.ensureRunning();
 
     if (!this.containerId) {
       throw new Error('Sandbox container is not running');
+    }
+
+    if (signal?.aborted) {
+      throw new Error('Command aborted');
     }
 
     const workdirArg = workdir ? `-w "/workspace/${workdir}"` : '';
@@ -94,9 +100,18 @@ export class DockerSandbox {
       const { stdout, stderr } = await execAsync(cmd, {
         timeout: 120_000,
         maxBuffer: 10 * 1024 * 1024,
-      });
-      return { stdout, stderr, exitCode: 0 };
+        encoding: 'utf8',
+        signal,
+      } as ExecOptions & { signal?: AbortSignal; encoding: 'utf8' });
+      return {
+        stdout: String(stdout),
+        stderr: String(stderr),
+        exitCode: 0,
+      };
     } catch (error) {
+      if (signal?.aborted || isAbortError(error)) {
+        throw new Error('Command aborted');
+      }
       const err = error as {
         stdout?: string;
         stderr?: string;
@@ -198,4 +213,12 @@ export class DockerSandbox {
   private quote(value: string): string {
     return `'${value.replace(/'/g, `'\\''`)}'`;
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const name = 'name' in error ? String((error as { name: unknown }).name) : '';
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return name === 'AbortError' || message.includes('abort');
 }

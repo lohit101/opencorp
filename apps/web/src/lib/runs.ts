@@ -36,16 +36,28 @@ export function registerRun(taskId: string): Run {
 }
 
 /**
- * Request cancellation of the run's current task. Aborts any in-flight LLM/tool
- * call (so a blocking call returns immediately) and marks the run cancelled so
- * the orchestrator stops before executing more work. Returns whether an active
- * run was found.
+ * Request cancellation of the run. Soft-stops every registered agent runtime
+ * (CEO + workers) so they abort in-flight work and wrap up in a few steps,
+ * and marks the run cancelled so the orchestrator skips remaining tasks.
  */
 export function cancelRun(taskId: string): boolean {
   const run = activeRuns.get(taskId);
   if (!run) return false;
   run.cancelled = true;
-  run.controller.abort();
+  // Soft-stop every worker first so each one wraps up; requestStop also aborts
+  // that runtime's in-flight LLM/tool calls.
+  for (const runtime of run.runtimes) {
+    try {
+      runtime.requestStop();
+    } catch {
+      // Best-effort; continue stopping others.
+    }
+  }
+  // Abort the shared controller so any runtime that only listens to the
+  // external signal (and any late-registered one) still stops.
+  if (!run.controller.signal.aborted) {
+    run.controller.abort();
+  }
   return true;
 }
 

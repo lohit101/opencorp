@@ -28,6 +28,8 @@ export class AgentRuntime {
 
   private currentTask: Task | null = null;
   private abortController: AbortController | null = null;
+  /** Soft stop: finish current step then wrap up in a few iterations. */
+  private stopRequested = false;
   /** Optional external signal (e.g. from an orchestrator) that aborts the task. */
   private readonly externalSignal?: AbortSignal;
 
@@ -67,6 +69,7 @@ export class AgentRuntime {
    */
   async executeTask(task: Task): Promise<Task> {
     this.currentTask = task;
+    this.stopRequested = false;
     this.abortController = new AbortController();
 
     // If an external signal was provided, abort our internal controller whenever
@@ -74,11 +77,17 @@ export class AgentRuntime {
     const controller = this.abortController;
     if (this.externalSignal) {
       if (this.externalSignal.aborted) {
+        this.stopRequested = true;
         controller.abort();
       } else {
-        this.externalSignal.addEventListener('abort', () => controller.abort(), {
-          once: true,
-        });
+        this.externalSignal.addEventListener(
+          'abort',
+          () => {
+            this.stopRequested = true;
+            controller.abort();
+          },
+          { once: true },
+        );
       }
     }
 
@@ -96,6 +105,23 @@ export class AgentRuntime {
 
       // Main agent loop
       const result = await this.runLoop(context);
+
+      // Soft/hard stop: treat as cancelled even if we produced a wrap-up summary.
+      if (this.stopRequested || this.abortController?.signal.aborted) {
+        const cancelledTask: Task = {
+          ...task,
+          status: 'failed',
+          result,
+          error: 'Cancelled by user',
+          updatedAt: new Date().toISOString(),
+        };
+        await this.emitEvent('task.failed', {
+          taskId: task.id,
+          error: 'Cancelled by user',
+          result,
+        });
+        return cancelledTask;
+      }
 
       const completedTask: Task = {
         ...task,
@@ -132,16 +158,48 @@ export class AgentRuntime {
     } finally {
       this.currentTask = null;
       this.abortController = null;
+      this.stopRequested = false;
     }
   }
 
   /**
-   * Cancel the currently executing task.
+   * Ask the agent to stop productive work and wrap up in a few steps.
+   * Prefer this over hard cancel when the user hits Stop Run.
    */
-  cancel(): void {
-    if (this.abortController) {
+  requestStop(): void {
+    this.stopRequested = true;
+    // Abort in-flight LLM/tool calls so we don't wait on long operations;
+    // cancelWrapUp intentionally does not use the aborted signal.
+    if (this.abortController && !this.abortController.signal.aborted) {
       this.abortController.abort();
     }
+  }
+
+  /**
+   * Cancel the currently executing task (hard stop + wrap-up path).
+   */
+  cancel(): void {
+    this.requestStop();
+  }
+
+  private shouldStop(): boolean {
+    return (
+      this.stopRequested ||
+      !!this.abortController?.signal.aborted ||
+      !!this.externalSignal?.aborted
+    );
+  }
+
+  private isAbortError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const name = 'name' in error ? String((error as { name: unknown }).name) : '';
+    const message =
+      error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    return (
+      name === 'AbortError' ||
+      message.includes('aborted') ||
+      message.includes('abort')
+    );
   }
 
   /**
@@ -179,18 +237,31 @@ export class AgentRuntime {
     while (iterations < this.maxIterations) {
       iterations++;
 
+      if (this.shouldStop()) {
+        return this.cancelWrapUp(messages);
+      }
+
       await this.emitEvent('agent.thinking', {
         agentId: this.agent.id,
         iteration: iterations,
       });
 
       // Call the LLM
-      const response = await this.llmProvider.chat(messages, {
-        model: this.agent.modelConfig.model,
-        systemPrompt: this.agent.systemPrompt,
-        tools: availableTools,
-        signal: this.abortController?.signal,
-      });
+      let response: import('@opencorp/llm').ChatResponse;
+      try {
+        response = await this.llmProvider.chat(messages, {
+          model: this.agent.modelConfig.model,
+          systemPrompt: this.agent.systemPrompt,
+          tools: availableTools,
+          signal: this.abortController?.signal,
+        });
+      } catch (error) {
+        if (this.shouldStop() || this.isAbortError(error)) {
+          this.stopRequested = true;
+          return this.cancelWrapUp(messages);
+        }
+        throw error;
+      }
 
       // If the LLM produced text content, add it to the conversation
       if (response.content) {
@@ -200,6 +271,10 @@ export class AgentRuntime {
       // If the LLM wants to call tools
       if (response.toolCalls.length > 0) {
         for (const toolCall of response.toolCalls) {
+          if (this.shouldStop()) {
+            break;
+          }
+
           await this.emitEvent('agent.tool_called', {
             agentId: this.agent.id,
             toolName: toolCall.toolName,
@@ -218,12 +293,27 @@ export class AgentRuntime {
           }
 
           // Execute the tool
-          const result = await tool.execute(toolCall, {
-            workspacePath: `/workspace/${this.agent.companyId}`,
-            agentId: this.agent.id,
-            companyId: this.agent.companyId,
-            signal: this.abortController?.signal,
-          });
+          let result: import('@opencorp/tools').ToolExecutionResult;
+          try {
+            result = await tool.execute(toolCall, {
+              workspacePath: `/workspace/${this.agent.companyId}`,
+              agentId: this.agent.id,
+              companyId: this.agent.companyId,
+              signal: this.abortController?.signal,
+            });
+          } catch (error) {
+            if (this.shouldStop() || this.isAbortError(error)) {
+              this.stopRequested = true;
+              messages.push({
+                role: 'tool',
+                content: 'Error: Cancelled by user',
+                toolCallId: toolCall.id,
+                toolName: toolCall.toolName,
+              });
+              break;
+            }
+            throw error;
+          }
 
           // Track "productive" actions (file writes, terminal, git commits).
           const isWork = ['write_file', 'terminal', 'git'].includes(
@@ -256,6 +346,10 @@ export class AgentRuntime {
           );
         }
 
+        if (this.shouldStop()) {
+          return this.cancelWrapUp(messages);
+        }
+
         // If the agent repeated the same exact tool call several times in a row,
         // it's likely stuck. Inject a redirect so it tries a different approach
         // rather than burning iterations on the same action.
@@ -283,7 +377,7 @@ export class AgentRuntime {
       if (response.finishReason === 'stop' && response.toolCalls.length === 0) {
         // If the agent claims to be done but has done NO real work, nudge it to
         // actually do the task rather than just talking about it.
-        if (!workDone && iterations < 3) {
+        if (!workDone && iterations < 3 && !this.shouldStop()) {
           messages.push({
             role: 'user',
             content:
@@ -297,9 +391,8 @@ export class AgentRuntime {
         return response.content;
       }
 
-      // Check for abort
-      if (this.abortController?.signal.aborted) {
-        throw new Error('Task execution was cancelled');
+      if (this.shouldStop()) {
+        return this.cancelWrapUp(messages);
       }
     }
 
@@ -308,6 +401,42 @@ export class AgentRuntime {
     // so far and report any remaining work, so the task is marked complete
     // with an honest status rather than pretending the job is done.
     return this.wrapUp(messages, availableTools);
+  }
+
+  /**
+   * User hit Stop: one brief summary LLM call (no tools) so every agent —
+   * including delegated workers — quits productive work quickly.
+   */
+  private async cancelWrapUp(
+    messages: import('@opencorp/llm').LLMMessage[],
+  ): Promise<string> {
+    await this.emitEvent('agent.stopped', {
+      agentId: this.agent.id,
+      reason: 'cancelled_by_user',
+    });
+
+    messages.push({
+      role: 'user',
+      content:
+        `The user cancelled this run. STOP all productive work immediately. ` +
+        `Do NOT call tools. In 2–4 short sentences, summarize what you finished ` +
+        `and what remains incomplete. Then stop.`,
+    });
+
+    try {
+      // Intentionally omit the aborted signal so this final summary can complete.
+      const response = await this.llmProvider.chat(messages, {
+        model: this.agent.modelConfig.model,
+        systemPrompt: this.agent.systemPrompt,
+        tools: [],
+      });
+      return (
+        response.content ??
+        'Run cancelled by user. Work stopped; no further summary available.'
+      );
+    } catch {
+      return 'Run cancelled by user. Work stopped.';
+    }
   }
 
   /**

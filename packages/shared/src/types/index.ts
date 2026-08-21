@@ -121,6 +121,8 @@ export interface Task {
   status: TaskStatus;
   assignedAgentId: string | null;
   parentTaskId: string | null;
+  /** Task IDs that must complete before this task can start. */
+  dependsOnTaskIds: string[];
   priority: number;
   result?: string;
   error?: string;

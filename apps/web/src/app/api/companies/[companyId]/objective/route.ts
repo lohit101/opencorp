@@ -42,6 +42,36 @@ const memoryStore = new PrismaMemoryStore();
 const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? 'opencorp-sandbox:latest';
 const SKILLS_ROOT = path.join(process.cwd(), '..', '..', 'skills');
 
+/** Applied at run time so existing CEOs get coarse planning + dependency rules. */
+const CEO_PLANNER_PROMPT = `You are the CEO of an AI company. Your job is to:
+1. Understand the company's high-level objective.
+2. Break the objective into a SMALL number of coarse tasks (typically 3–6, never more than 8).
+3. Use the "list_agents" tool to see your team members, roles, and departments.
+4. Use the "create_task" tool to delegate to the right specialists.
+5. Use "send_message" only when needed.
+6. Report your plan and mark yourself complete — do not wait for workers.
+
+You are a planner only. You do NOT use the terminal, read/write files, or run builds. You ONLY delegate via create_task.
+
+**TASK BUDGET (CRITICAL)**:
+- Prefer 3–6 tasks total. Hard max is 8.
+- NEVER micro-decompose. Bad: separate tasks for hero, features, footer, CTA, copy, styling. Good: one "Design landing page direction" + one "Build landing page" + optional research/QA.
+- One Engineer task should own the full implementation deliverable.
+- Simple objectives (e.g. a single landing page) should usually be: Research (optional) + Design + Engineer + QA.
+
+**DEPENDENCIES / ORDERING (CRITICAL)**:
+- Researcher and Designer may run in parallel.
+- Engineer must wait until research/design outputs exist. When you create the Engineer task, pass dependsOnTaskIds with the Researcher and/or Designer task IDs returned by create_task.
+- QA must wait for Engineering. Pass dependsOnTaskIds with the Engineer task ID.
+- If you omit dependsOnTaskIds, the system still enforces this phase order by role — but you should set deps explicitly when you can.
+
+**WORKFLOW**:
+1. list_agents
+2. Create coarse tasks with create_task (and dependsOnTaskIds where needed)
+3. Immediately report your plan and finish. Do not re-examine the workspace.
+
+If blocked, use ask_user.`;
+
 /**
  * Build a SkillProvider that loads the skills referenced by each agent.
  */
@@ -195,13 +225,18 @@ async function runObjective(params: {
           description: pending.description,
           assignedAgentId: pending.assignedAgentId,
           parentTaskId: pending.parentTaskId ?? taskId,
+          dependsOnTaskIds: pending.dependsOnTaskIds,
           priority: pending.priority,
         });
         delegatedTargetIds.push(created.id);
         await eventStore.create({
           companyId,
           type: 'task.created',
-          eventData: { title: created.title, assignedAgentId: created.assignedAgentId },
+          eventData: {
+            title: created.title,
+            assignedAgentId: created.assignedAgentId,
+            dependsOnTaskIds: created.dependsOnTaskIds,
+          },
         });
         return created.id;
       },
@@ -222,6 +257,7 @@ async function runObjective(params: {
     const ceoForRun: AgentConfig = {
       ...ceo,
       toolNames: ['send_message', 'list_agents', 'create_task', 'ask_user', 'remember', 'get_messages'],
+      systemPrompt: CEO_PLANNER_PROMPT,
     };
     const runner = new AgentRuntime({
       agent: ceoForRun,
@@ -230,7 +266,7 @@ async function runObjective(params: {
       memory: memoryStore,
       skillProvider: makeSkillProvider(),
       eventHandler: persistEvent(companyId),
-      maxIterations: 30,
+      maxIterations: 12,
       signal: controller.signal,
     });
     run.runtimes.push(runner);
@@ -244,51 +280,78 @@ async function runObjective(params: {
     // If the user hit Stop during/after the CEO's planning loop, do not execute
     // any delegated work — the objective is cancelled.
     if (isRunCancelled(taskId)) {
+      await finalizeCancelledRun(companyId, taskId, ceo.id);
       return;
     }
 
-    // Execute delegated tasks after the CEO's planning loop. Tasks assigned to
-    // different agents run in parallel; tasks assigned to the same agent run
-    // sequentially to avoid conflicts on the same workspace.
+    // Execute delegated tasks in dependency/phase waves:
+    // research + design can run in parallel; engineering waits for them; QA waits
+    // for engineering. Same-agent tasks within a wave stay sequential.
     if (delegatedTargetIds.length > 0) {
       await eventStore.create({
         companyId,
         type: 'system.info',
-        eventData: { message: `CEO delegated ${delegatedTargetIds.length} task(s). Executing them now.` },
+        eventData: {
+          message: `CEO delegated ${delegatedTargetIds.length} task(s). Executing in phased waves.`,
+        },
       });
 
-      // Load all delegated tasks and group by assigned agent.
-      const delegatedTasks: { task: import('@opencorp/shared').Task; agentId: string }[] = [];
+      const delegatedTasks: import('@opencorp/shared').Task[] = [];
       for (const delegatedId of delegatedTargetIds) {
         const delegatedTask = await taskRepo.findById(delegatedId);
         if (!delegatedTask || !delegatedTask.assignedAgentId) continue;
-        delegatedTasks.push({ task: delegatedTask, agentId: delegatedTask.assignedAgentId });
+        delegatedTasks.push(delegatedTask);
       }
 
-      // Group by agent so each agent's tasks run sequentially.
-      const byAgent = new Map<string, import('@opencorp/shared').Task[]>();
-      for (const { task: t, agentId } of delegatedTasks) {
-        if (!byAgent.has(agentId)) byAgent.set(agentId, []);
-        byAgent.get(agentId)!.push(t);
-      }
+      const agentById = new Map(companyAgents.map((a) => [a.id, a]));
+      const waves = planExecutionWaves(delegatedTasks, agentById);
 
-      // Run each agent's task chain in parallel across agents.
-      const chains = Array.from(byAgent.entries()).map(async ([agentId, agentTasks]) => {
-        for (const agentTask of agentTasks) {
-          if (isRunCancelled(taskId)) return; // stop early if cancelled
-          await runAgentTask({
-            companyId,
-            rootTaskId: taskId,
-            agentId,
-            task: agentTask,
-            signal: controller.signal,
-          });
+      for (let waveIndex = 0; waveIndex < waves.length; waveIndex++) {
+        if (isRunCancelled(taskId)) {
+          await finalizeCancelledRun(companyId, taskId, ceo.id);
+          return;
         }
-      });
-      await Promise.all(chains);
+
+        const wave = waves[waveIndex]!;
+        await eventStore.create({
+          companyId,
+          type: 'system.info',
+          eventData: {
+            message: `Starting wave ${waveIndex + 1}/${waves.length} (${wave.length} task(s)).`,
+            wave: waveIndex + 1,
+            taskIds: wave.map((t) => t.id),
+          },
+        });
+
+        // Group by agent so each agent's tasks in this wave run sequentially,
+        // while different agents in the wave run in parallel.
+        const byAgent = new Map<string, import('@opencorp/shared').Task[]>();
+        for (const t of wave) {
+          const agentId = t.assignedAgentId!;
+          if (!byAgent.has(agentId)) byAgent.set(agentId, []);
+          byAgent.get(agentId)!.push(t);
+        }
+
+        const chains = Array.from(byAgent.entries()).map(async ([agentId, agentTasks]) => {
+          for (const agentTask of agentTasks) {
+            if (isRunCancelled(taskId)) return;
+            await runAgentTask({
+              companyId,
+              rootTaskId: taskId,
+              agentId,
+              task: agentTask,
+              signal: controller.signal,
+            });
+          }
+        });
+        await Promise.all(chains);
+      }
     }
 
-    if (isRunCancelled(taskId)) return;
+    if (isRunCancelled(taskId)) {
+      await finalizeCancelledRun(companyId, taskId, ceo.id);
+      return;
+    }
 
     const ceoResultText = ceoResult.result ?? 'Objective completed.';
     await taskRepo.updateResult(taskId, ceoResultText);
@@ -300,6 +363,18 @@ async function runObjective(params: {
     ]);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
+    // If cancelled, prefer cancelled finalization over generic failure noise.
+    if (isRunCancelled(taskId) || /abort|cancel/i.test(message)) {
+      try {
+        const companyAgents = await agentRepo.findByCompany(companyId);
+        const ceo = companyAgents.find((a) => a.role === 'CEO');
+        await finalizeCancelledRun(companyId, taskId, ceo?.id);
+      } catch {
+        await taskRepo.updateError(taskId, 'Cancelled by user');
+        await taskRepo.updateStatus(taskId, 'failed');
+      }
+      return;
+    }
     await taskRepo.updateError(taskId, message);
     await taskRepo.updateStatus(taskId, 'failed');
     await eventStore.create({
@@ -346,6 +421,7 @@ async function runAgentTask(params: {
           description: t.description,
           assignedAgentId: t.assignedAgentId,
           parentTaskId: task.id,
+          dependsOnTaskIds: t.dependsOnTaskIds,
           priority: t.priority,
         })
       ).id,
@@ -539,4 +615,140 @@ async function recordEvents(
       eventData: event.eventData,
     });
   }
+}
+
+/**
+ * Mark the root task + unfinished children as cancelled and idle all agents.
+ */
+async function finalizeCancelledRun(
+  companyId: string,
+  rootTaskId: string,
+  ceoId?: string,
+): Promise<void> {
+  const allTasks = await taskRepo.findByCompany(companyId);
+  for (const t of allTasks) {
+    const isRoot = t.id === rootTaskId;
+    const isChild = t.parentTaskId === rootTaskId;
+    if (!isRoot && !isChild) continue;
+    if (
+      t.status === 'pending' ||
+      t.status === 'assigned' ||
+      t.status === 'running' ||
+      t.status === 'blocked'
+    ) {
+      await taskRepo.updateError(t.id, 'Cancelled by user');
+      await taskRepo.updateStatus(t.id, 'failed');
+    }
+  }
+
+  const agents = await agentRepo.findByCompany(companyId);
+  for (const agent of agents) {
+    if (agent.state !== 'idle') {
+      await agentRepo.updateState(agent.id, 'idle');
+    }
+  }
+
+  if (ceoId) {
+    await agentRepo.updateState(ceoId, 'idle');
+  }
+
+  await eventStore.create({
+    companyId,
+    type: 'system.info',
+    eventData: { message: 'Objective cancelled by user. All agents stopped.' },
+    taskId: rootTaskId,
+  });
+}
+
+/**
+ * Default execution phase when the CEO did not set dependsOnTaskIds.
+ * Research + Design = 0 (parallel), Engineering = 1, QA = 2.
+ */
+function defaultPhaseForAgent(agent: AgentConfig | undefined): number {
+  if (!agent) return 1;
+  const role = agent.role.toUpperCase();
+  const dept = (agent.department ?? '').toLowerCase();
+
+  if (
+    role.includes('RESEARCH') ||
+    dept === 'research' ||
+    role.includes('DESIGN') ||
+    dept === 'design' ||
+    role.includes('MARKET') ||
+    dept === 'marketing'
+  ) {
+    return 0;
+  }
+  if (role.includes('QA') || dept === 'qa' || role.includes('TEST')) {
+    return 2;
+  }
+  // Engineer / developer / default implementers
+  return 1;
+}
+
+/**
+ * Build execution waves from explicit dependsOn edges, falling back to
+ * role/department phases when no dependencies were set.
+ */
+function planExecutionWaves(
+  tasks: import('@opencorp/shared').Task[],
+  agentById: Map<string, AgentConfig>,
+): import('@opencorp/shared').Task[][] {
+  if (tasks.length === 0) return [];
+
+  const hasExplicitDeps = tasks.some((t) => (t.dependsOnTaskIds?.length ?? 0) > 0);
+  const taskIds = new Set(tasks.map((t) => t.id));
+
+  // Effective deps: explicit, or inferred phase edges (later phase → earlier phase tasks).
+  const depsOf = new Map<string, string[]>();
+  for (const t of tasks) {
+    if (hasExplicitDeps) {
+      depsOf.set(
+        t.id,
+        (t.dependsOnTaskIds ?? []).filter((id) => taskIds.has(id) && id !== t.id),
+      );
+    } else {
+      const phase = defaultPhaseForAgent(
+        t.assignedAgentId ? agentById.get(t.assignedAgentId) : undefined,
+      );
+      const inferred = tasks
+        .filter((other) => {
+          if (other.id === t.id) return false;
+          const otherPhase = defaultPhaseForAgent(
+            other.assignedAgentId ? agentById.get(other.assignedAgentId) : undefined,
+          );
+          return otherPhase < phase;
+        })
+        .map((other) => other.id);
+      depsOf.set(t.id, inferred);
+    }
+  }
+
+  const remaining = new Map(tasks.map((t) => [t.id, t]));
+  const completed = new Set<string>();
+  const waves: import('@opencorp/shared').Task[][] = [];
+
+  while (remaining.size > 0) {
+    const ready: import('@opencorp/shared').Task[] = [];
+    for (const t of remaining.values()) {
+      const deps = depsOf.get(t.id) ?? [];
+      if (deps.every((d) => completed.has(d))) {
+        ready.push(t);
+      }
+    }
+
+    // Cycle / missing-deps fallback: run everything left in one wave.
+    if (ready.length === 0) {
+      waves.push([...remaining.values()]);
+      break;
+    }
+
+    waves.push(ready);
+    for (const t of ready) {
+      remaining.delete(t.id);
+      completed.add(t.id);
+    }
+  }
+
+  return waves;
 }

@@ -140,6 +140,9 @@ User: "Build me a landing page for an AI email automation product."
 - [x] Run delegated tasks in parallel across agents (sequential per-agent)
 - [x] Graceful iteration-limit wrap-up (agent summarizes progress instead of silently failing)
 - [x] Department-aware delegation (CEO assigns tasks to the right department)
+- [x] Stop Run propagates to all workers with graceful wrap-up
+- [x] Hard cap + coarse planning so CEO does not explode tasks (max 8)
+- [x] Phased execution: research/design parallel → engineering → QA (deps + role fallback)
 - [ ] Department-level status and activity aggregation
 - [ ] Per-department workspace isolation (optional)
 

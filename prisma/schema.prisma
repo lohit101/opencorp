@@ -75,6 +75,7 @@ model Task {
   status          String    @default("pending")
   assignedAgentId String?
   parentTaskId    String?
+  dependsOn       String    @default("[]") // JSON array of task IDs
   priority        Int       @default(1)
   result          String?
   error           String?

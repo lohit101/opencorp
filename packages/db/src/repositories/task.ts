@@ -11,6 +11,7 @@ export class TaskRepository {
     description: string;
     assignedAgentId?: string;
     parentTaskId?: string;
+    dependsOnTaskIds?: string[];
     priority?: number;
   }): Promise<Task> {
     const task = await prisma.task.create({
@@ -20,6 +21,7 @@ export class TaskRepository {
         description: data.description,
         assignedAgentId: data.assignedAgentId ?? null,
         parentTaskId: data.parentTaskId ?? null,
+        dependsOn: JSON.stringify(data.dependsOnTaskIds ?? []),
         priority: data.priority ?? 1,
         status: 'pending',
       },
@@ -85,6 +87,7 @@ export class TaskRepository {
       status: string;
       assignedAgentId: string | null;
       parentTaskId: string | null;
+      dependsOn?: string | null;
       priority: number;
       result: string | null;
       error: string | null;
@@ -93,6 +96,16 @@ export class TaskRepository {
       completedAt: Date | null;
     },
   ): Task {
+    let dependsOnTaskIds: string[] = [];
+    try {
+      const parsed = JSON.parse(task.dependsOn ?? '[]') as unknown;
+      if (Array.isArray(parsed)) {
+        dependsOnTaskIds = parsed.filter((id): id is string => typeof id === 'string');
+      }
+    } catch {
+      dependsOnTaskIds = [];
+    }
+
     return {
       id: task.id,
       companyId: task.companyId,
@@ -101,6 +114,7 @@ export class TaskRepository {
       status: task.status as TaskStatus,
       assignedAgentId: task.assignedAgentId,
       parentTaskId: task.parentTaskId,
+      dependsOnTaskIds,
       priority: task.priority,
       result: task.result ?? undefined,
       error: task.error ?? undefined,
